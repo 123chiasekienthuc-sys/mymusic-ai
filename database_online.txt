@@ -1,0 +1,23 @@
+MYSQL_DATABASE:railway
+MYSQL_PUBLIC_URL:mysql://root:PoiVDleqpbtntUyikBlJObQPXnKvrcsd@switchback.proxy.rlwy.net:53475/railway
+MYSQL_ROOT_PASSWORD:PoiVDleqpbtntUyikBlJObQPXnKvrcsd
+MYSQL_URL:mysql://root:PoiVDleqpbtntUyikBlJObQPXnKvrcsd@mysql.railway.internal:3306/railway
+MYSQLDATABASE:railway
+MYSQLHOST:mysql.railway.internal
+MYSQLPASSWORD:PoiVDleqpbtntUyikBlJObQPXnKvrcsd
+MYSQLPORT:3306
+MYSQLUSER:root
+
+
+HOST: switchback.proxy.rlwy.net
+PORT: 53475
+USER: root
+PASSWORD: PoiVDleqpbtntUyikBlJObQPXnKvrcsd
+DATABASE: railway
+
+
+
+
+
+
+

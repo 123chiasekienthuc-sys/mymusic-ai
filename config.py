@@ -1,14 +1,27 @@
 import os
 
+# Lấy thông tin database từ biến môi trường (Railway / Render)
+DB_HOST = os.getenv("MYSQLHOST", "localhost")
+DB_PORT = int(os.getenv("MYSQLPORT", 3306))
+DB_USER = os.getenv("MYSQLUSER", "root")
+DB_PASSWORD = os.getenv("MYSQLPASSWORD", "123456")
+DB_NAME = os.getenv("MYSQLDATABASE", "Mymusic")
+
 DB_CONFIG = {
-    'host': 'localhost',  # tên server
-    'user': 'root',  # Khớp với MYSQL_USER trong docker-compose.yml
-    'password': '123456',  # Khớp với MYSQL_PASSWORD trong docker-compose.yml
-    'database': 'Mymusic'  # Khớp với MYSQL_DATABASE trong docker-compose.yml
+    "host": DB_HOST,
+    "port": DB_PORT,
+    "user": DB_USER,
+    "password": DB_PASSWORD,
+    "database": DB_NAME,
+    "charset": "utf8mb4"
 }
 
-# Hoặc nếu dùng Flask-SQLAlchemy:
-SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}/{DB_CONFIG['database']}"
+# SQLAlchemy connection string
+SQLALCHEMY_DATABASE_URI = (
+    f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+)
+
 SQLALCHEMY_TRACK_MODIFICATIONS = False
-# Cấu hình AI lấy từ .env
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+
+# API Key AI
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")

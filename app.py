@@ -36,80 +36,102 @@ BACKUP_PATH = Path("data/mymusic.sql")  # Đường dẫn mặc định
 DEFAULT_PASSWORD = "123456"  # Password mặc định
 
 # --- HÀM CHÍNH --- #
+import getpass
+from pymysql.constants import CLIENT
+
 def get_db_config():
-    """Lấy thông tin kết nối database từ người dùng"""
-    print("\n🔧 NHẬP THÔNG TIN DATABASE (ấn Enter để dùng giá trị mặc định)")
-    
+    """Lấy thông tin kết nối database"""
+
+    print("\n🔧 NHẬP THÔNG TIN DATABASE (Enter để dùng Railway mặc định)")
+
     config = {
-        'host': input("MySQL Host [localhost]: ").strip() or "localhost",
+        'host': input("MySQL Host [switchback.proxy.rlwy.net]: ").strip() or "switchback.proxy.rlwy.net",
+        'port': int(input("Port [53475]: ").strip() or 53475),
         'user': input("Username [root]: ").strip() or "root",
-        'database': input("Tên Database [mymusic]: ").strip() or "mymusic",
+        'database': input("Database [railway]: ").strip() or "railway",
         'charset': 'utf8mb4',
         'client_flag': CLIENT.MULTI_STATEMENTS
     }
-    
-    # Xử lý password với giá trị mặc định
-    password = getpass.getpass(f"Password [mặc định: '{DEFAULT_PASSWORD}']: ").strip()
-    config['password'] = password or DEFAULT_PASSWORD
-    
+
+    password = getpass.getpass("Password (Railway MySQL): ").strip()
+    config['password'] = password
+
     return config
 
+import pymysql
+
 def restore_database(config, backup_file):
-    """Thực hiện khôi phục database"""
+    """Khôi phục database từ file SQL"""
+
+    conn = None
+
     try:
-        print(f"\n🔗 Đang kết nối tới MySQL server tại {config['host']}...")
-        
-        # Kết nối không chọn database trước
+        print(f"\n🔗 Đang kết nối MySQL tại {config['host']}:{config['port']}...")
+
         conn = pymysql.connect(
             host=config['host'],
+            port=config['port'],
             user=config['user'],
             password=config['password'],
+            database=config['database'],
             charset=config['charset'],
-            client_flag=config['client_flag']
+            client_flag=config['client_flag'],
+            autocommit=True
         )
-        
+
         with conn.cursor() as cursor:
+
             # Kiểm tra phiên bản MySQL
             cursor.execute("SELECT VERSION()")
             print(f"⚙️ MySQL Version: {cursor.fetchone()[0]}")
-            
-            print(f"\n♻️ Đang tạo database '{config['database']}'...")
-            cursor.execute(f"DROP DATABASE IF EXISTS `{config['database']}`")
-            cursor.execute(f"""
-                CREATE DATABASE `{config['database']}` 
-                CHARACTER SET utf8mb4 
-                COLLATE utf8mb4_unicode_ci
-            """)
-            
-            print(f"📥 Đang import dữ liệu từ {backup_file}...")
-            cursor.execute(f"USE `{config['database']}`")
-            
-            # Đọc và thực thi file SQL
-            with open(backup_file, 'r', encoding='utf-8') as f:
-                sql = f.read()
-                for statement in sql.split(';'):
-                    if statement.strip():
-                        cursor.execute(statement)
-            
-            conn.commit()
-            print("\n✅ KHÔI PHỤC THÀNH CÔNG!")
-            print(f"🔑 Thông tin kết nối:")
-            print(f"- Host: {config['host']}")
-            print(f"- Database: {config['database']}")
-            print(f"- Username: {config['user']}")
-            print(f"- Password: {'*' * len(config['password'])}")
-            
+
+            print(f"\n📥 Đang import dữ liệu từ {backup_file}...")
+
+            # Tắt kiểm tra khóa ngoại
+            cursor.execute("SET FOREIGN_KEY_CHECKS=0")
+
+            sql_command = ""
+
+            with open(backup_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+
+                    # Bỏ qua comment
+                    if line.startswith("--") or line == "":
+                        continue
+
+                    sql_command += line + " "
+
+                    # Khi gặp dấu ; thì chạy câu SQL
+                    if line.endswith(";"):
+                        try:
+                            cursor.execute(sql_command)
+                        except Exception as e:
+                            print("⚠️ Lỗi SQL:", e)
+
+                        sql_command = ""
+
+            # Bật lại khóa ngoại
+            cursor.execute("SET FOREIGN_KEY_CHECKS=1")
+
+        print("\n✅ KHÔI PHỤC DATABASE THÀNH CÔNG!")
+        print("\n🔑 Thông tin kết nối:")
+        print(f"- Host: {config['host']}")
+        print(f"- Port: {config['port']}")
+        print(f"- Database: {config['database']}")
+        print(f"- Username: {config['user']}")
+
     except pymysql.Error as e:
         print(f"\n❌ LỖI MySQL ({e.args[0]}): {e.args[1]}")
-        if e.args[0] == 1049:  # Database không tồn tại
-            print("👉 Gợi ý: Kiểm tra lại tên database hoặc quyền truy cập")
+
     except FileNotFoundError:
-        print(f"\n❌ KHÔNG TÌM THẤY FILE BACKUP: {backup_file}")
-        print(f"👉 Đảm bảo file tồn tại trong thư mục 'data'")
+        print(f"\n❌ KHÔNG TÌM THẤY FILE: {backup_file}")
+
     except Exception as e:
         print(f"\n❌ LỖI KHÔNG XÁC ĐỊNH: {str(e)}")
+
     finally:
-        if 'conn' in locals() and conn:
+        if conn:
             conn.close()
 
 
