@@ -1,5 +1,5 @@
 # ai_assistant.py
-from google import genai
+import google.generativeai as genai
 import os
 import re
 import mysql.connector
