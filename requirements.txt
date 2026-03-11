@@ -1,45 +1,16 @@
-# Flask và extensions
 Flask==2.3.3
 Flask-Paginate==2024.4.12
 Flask-WTF==1.2.1
-WTForms==3.1.2
-Werkzeug==3.0.3
 
-# Database
 mysql-connector-python==8.3.0
-pymysql==1.1.0
-cryptography==42.0.5
+PyMySQL==1.1.0
 
-# Google AI
 google-generativeai==0.8.4
-google-ai-generativelanguage==0.6.10
-google-api-core==2.19.1
-google-auth==2.29.0
-googleapis-common-protos==1.63.2
-proto-plus==1.23.0
-protobuf==4.25.3
 
-# Môi trường
 python-dotenv==1.0.1
 
-# Xử lý ảnh
-Pillow==10.3.0
+Pillow==10.2.0
 
-# Bảo mật
-itsdangerous==2.2.0
-MarkupSafe==2.1.5
-blinker==1.8.2
-
-# HTTP requests
 requests==2.31.0
-urllib3==2.2.1
-certifi==2024.2.2
-charset-normalizer==3.3.2
-idna==3.7
 
-# Ghi log
-colorama==0.4.6
-
-# Tiện ích
-six==1.16.0
 gunicorn==21.2.0
