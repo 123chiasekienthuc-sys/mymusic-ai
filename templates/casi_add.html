@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0"><i class="fas fa-plus-circle"></i> Thêm ca sĩ mới</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/casi/add" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <!-- Tên ca sĩ -->
+                        <div class="mb-3">
+                            <label for="tencasi" class="form-label">
+                                Tên ca sĩ <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="tencasi" 
+                                   name="tencasi" 
+                                   required
+                                   maxlength="50"
+                                   placeholder="Nhập tên ca sĩ">
+                        </div>
+                        
+                        <!-- Ngày sinh -->
+                        <div class="mb-3">
+                            <label for="ngaysinh" class="form-label">Ngày sinh</label>
+                            <input type="date" 
+                                   class="form-control" 
+                                   id="ngaysinh" 
+                                   name="ngaysinh">
+                        </div>
+                        
+                        <!-- Ảnh đại diện -->
+                        <div class="mb-3">
+                            <label for="anhdaidien" class="form-label">Ảnh đại diện</label>
+                            <input class="form-control" 
+                                   type="file" 
+                                   id="anhdaidien" 
+                                   name="anhdaidien" 
+                                   accept="image/jpeg,image/png,image/gif,image/webp">
+                            <div class="form-text">
+                                Định dạng: JPEG, PNG, GIF, WEBP. Kích thước tối đa: 5MB
+                            </div>
+                            <div id="preview" class="mt-2" style="display: none;">
+                                <img src="#" alt="Preview" class="img-thumbnail" style="max-height: 150px;">
+                            </div>
+                        </div>
+                        
+                        <!-- Sự nghiệp -->
+                        <div class="mb-3">
+                            <label for="sunghiep" class="form-label">Sự nghiệp</label>
+                            <textarea class="form-control" 
+                                      id="sunghiep" 
+                                      name="sunghiep" 
+                                      rows="5"
+                                      placeholder="Nhập thông tin về sự nghiệp của ca sĩ..."></textarea>
+                        </div>
+                        
+                        <!-- Nút submit -->
+                        <div class="d-flex justify-content-between">
+                            <a href="/casi" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Quay lại
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> Thêm mới
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Preview ảnh trước khi upload
+document.getElementById('anhdaidien').addEventListener('change', function(e) {
+    const preview = document.getElementById('preview');
+    const previewImg = preview.querySelector('img');
+    
+    if (this.files && this.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            previewImg.src = e.target.result;
+            preview.style.display = 'block';
+        };
+        reader.readAsDataURL(this.files[0]);
+    } else {
+        preview.style.display = 'none';
+    }
+});
+
+// Validate form
+document.querySelector('form').addEventListener('submit', function(e) {
+    const fileInput = document.getElementById('anhdaidien');
+    if (fileInput.files[0] && fileInput.files[0].size > 5 * 1024 * 1024) {
+        e.preventDefault();
+        alert('Ảnh tải lên không được vượt quá 5MB');
+    }
+});
+</script>
+{% endblock %}

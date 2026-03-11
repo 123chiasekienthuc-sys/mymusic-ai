@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Trang chủ</a></li>
+            <li class="breadcrumb-item"><a href="/nhacsi">Nhạc sĩ</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Chi tiết</li>
+        </ol>
+    </nav>
+
+    <!-- Phần thông tin nhạc sĩ -->
+    <div class="row mb-5">
+        <div class="col-md-4 text-center">
+            <div class="card mb-3 shadow-sm">
+                <div class="card-body">
+<div id="nhacsiavatar">
+    <!-- Ảnh sẽ được thêm bằng JavaScript -->
+    <img id="nhacsiAvatarImg" src="/static/images/default-avatar.jpg" 
+         class="img-fluid rounded-circle mb-3" 
+         style="width: 200px; height: 200px; object-fit: cover;">
+    <div id="avatarCaption" class="form-text text-muted">Đang tải ảnh...</div>
+</div>
+                    <h3 id="nhacsiTen" class="mb-0"></h3>
+                    <p class="text-muted mb-2" id="nhacsiNgaysinh"></p>
+                    <p class="text-muted"><small id="nhacsiNgaythem"></small></p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">Sự nghiệp</h4>
+                </div>
+                <div class="card-body">
+                    <div id="nhacsiTieusu" class="text-justify"></div>
+                    
+                    <div class="mt-4 pt-3 border-top">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <h5 id="tongBaiHat" class="fw-bold">0</h5>
+                                <p class="text-muted mb-0">Bài hát</p>
+                            </div>
+                            <div class="col-4">
+                                <h5 id="tongBanThuAm" class="fw-bold">0</h5>
+                                <p class="text-muted mb-0">Bản thu âm</p>
+                            </div>
+                            <div class="col-4">
+                                <h5 id="namSangTac" class="fw-bold">--</h5>
+                                <p class="text-muted mb-0">Năm sáng tác đầu</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Danh sách bài hát -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Danh sách bài hát</h4>
+                <button id="sortBtn" class="btn btn-sm btn-light">
+                    <i class="fas fa-sort-amount-down me-1"></i>Sắp xếp
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>STT</th>
+                            <th>Tên bài hát</th>
+                            <th>Số bản thu âm</th>
+                            <th>Ngày thêm</th>
+                            <th>Hành động</th>
+                        </tr>
+                    </thead>
+                    <tbody id="baiHatTable">
+                        <!-- Dữ liệu sẽ được thêm bằng JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="baiHatLoading" class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+            <div id="baiHatEmpty" class="text-center py-4 d-none">
+                <p class="text-muted">Nhạc sĩ này chưa có bài hát nào trong hệ thống</p>
+                <a href="/bannhac/add" class="btn btn-primary">Thêm bài hát mới</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const nhacsiId = {{ idnhacsi }};
+    loadNhacsiDetail(nhacsiId);
+});
+// Sau khi nhận dữ liệu từ API
+function updateNhacsiAvatar(data) {
+    const avatarImg = document.getElementById('nhacsiAvatarImg');
+    const avatarCaption = document.getElementById('avatarCaption');
+    
+    if (data.nhacsiavatar) {
+        // Nếu có avatar
+        avatarImg.src = `/static/images/artists/${data.nhacsiavatar}`;
+        avatarImg.alt = `Ảnh đại diện của ${data.tennhacsi || 'Nhạc sĩ'}`;
+        avatarCaption.textContent = 'Ảnh hiện tại';
+    } else {
+        // Nếu không có avatar
+        avatarImg.src = '/static/images/default-avatar.jpg';
+        avatarImg.alt = 'Ảnh đại diện mặc định';
+        avatarCaption.textContent = 'Ảnh mặc định';
+    }
+}
+
+// Ví dụ sử dụng:
+fetch(`/api/nhacsi/${idnhacsi}`)
+    .then(response => response.json())
+    .then(data => {
+        updateNhacsiAvatar(data);
+        // Cập nhật các thông tin khác...
+    });
+function loadNhacsiDetail(id) {
+    fetch(`/api/nhacsi/${id}`)
+        .then(response => response.json())
+        .then(data => {
+            // Hiển thị thông tin cơ bản
+            const nhacsi = data.nhacsi;
+            document.getElementById('nhacsiavatar').textContent = nhacsi.avatar;
+	    
+            document.getElementById('nhacsiTen').textContent = nhacsi.tennhacsi;
+            
+            if (nhacsi.ngaysinh) {
+                const ngaysinh = new Date(nhacsi.ngaysinh);
+                document.getElementById('nhacsiNgaysinh').textContent = `Sinh ngày: ${ngaysinh.toLocaleDateString('vi-VN')}`;
+            } else {
+                document.getElementById('nhacsiNgaysinh').textContent = 'Chưa cập nhật ngày sinh';
+            }
+            
+            document.getElementById('nhacsiNgaythem').textContent = `Tham gia từ: ${nhacsi.ngay_them}`;
+            document.getElementById('nhacsiTieusu').innerHTML = nhacsi.tieusu || '<em>Chưa có tiểu sử</em>';
+            
+            // Hiển thị danh sách bài hát
+            const baihat = data.baihat;
+            const tableBody = document.getElementById('baiHatTable');
+            const loadingElement = document.getElementById('baiHatLoading');
+            const emptyElement = document.getElementById('baiHatEmpty');
+            
+            if (baihat.length === 0) {
+                loadingElement.classList.add('d-none');
+                emptyElement.classList.remove('d-none');
+            } else {
+                tableBody.innerHTML = '';
+                let tongBanThuAm = 0;
+                
+                // Tìm năm sáng tác đầu tiên
+                let namSangTac = null;
+                if (baihat.length > 0) {
+                    const dates = baihat.map(bh => new Date(bh.ngay_them.split('/').reverse().join('-')));
+                    const oldestDate = new Date(Math.min(...dates));
+                    namSangTac = oldestDate.getFullYear();
+                }
+                
+                baihat.forEach((bh, index) => {
+                    tongBanThuAm += bh.soluong_banthuam;
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td><a href="/bannhac/detail/${bh.idbannhac}">${bh.tenbannhac}</a></td>
+                        <td>${bh.soluong_banthuam}</td>
+                        <td>${bh.ngay_them}</td>
+                        <td>
+                            <a href="/banthuam?bannhac=${bh.idbannhac}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-headphones me-1"></i>Bản thu âm
+                            </a>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+                
+                // Cập nhật thống kê
+                document.getElementById('tongBaiHat').textContent = baihat.length;
+                document.getElementById('tongBanThuAm').textContent = tongBanThuAm;
+                if (namSangTac) {
+                    document.getElementById('namSangTac').textContent = namSangTac;
+                }
+                
+                loadingElement.classList.add('d-none');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('baiHatLoading').innerHTML = `
+                <div class="alert alert-danger">
+                    Đã xảy ra lỗi khi tải thông tin nhạc sĩ. 
+                    <button onclick="loadNhacsiDetail(${id})" class="btn btn-sm btn-danger">Thử lại</button>
+                </div>
+            `;
+        });
+}
+
+// Sắp xếp bài hát
+document.getElementById('sortBtn').addEventListener('click', function() {
+    const table = document.getElementById('baiHatTable');
+    const rows = Array.from(table.querySelectorAll('tr'));
+    
+    rows.sort((a, b) => {
+        const countA = parseInt(a.cells[2].textContent);
+        const countB = parseInt(b.cells[2].textContent);
+        return countB - countA;
+    });
+    
+    // Xóa hết các row hiện tại
+    while (table.firstChild) {
+        table.removeChild(table.firstChild);
+    }
+    
+    // Thêm lại theo thứ tự mới
+    rows.forEach((row, index) => {
+        row.cells[0].textContent = index + 1;
+        table.appendChild(row);
+    });
+});
+</script>
+
+<style>
+/* Custom CSS cho trang chi tiết */
+.img-thumbnail {
+    border: 3px solid #dee2e6;
+    transition: all 0.3s;
+}
+
+.img-thumbnail:hover {
+    border-color: #0d6efd;
+    transform: scale(1.03);
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+.border-top {
+    border-top: 2px solid #dee2e6 !important;
+}
+
+#nhacsiTieusu {
+    line-height: 1.8;
+    font-size: 1.05rem;
+}
+
+@media (max-width: 768px) {
+    .card-body .row > div {
+        margin-bottom: 1rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.9rem;
+    }
+}
+</style>
+{% endblock %}

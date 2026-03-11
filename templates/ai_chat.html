@@ -1,0 +1,412 @@
+<!-- templates/ai_chat.html -->
+<style>
+.chat-widget {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 350px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 5px 30px rgba(0,0,0,0.2);
+    z-index: 1000;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+    transition: all 0.3s;
+}
+
+.chat-header {
+    background: linear-gradient(135deg, #4361ee, #7209b7);
+    color: white;
+    padding: 15px 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+}
+
+.chat-header i {
+    font-size: 1.2rem;
+}
+
+.chat-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.chat-header-left i {
+    font-size: 1.4rem;
+}
+
+.chat-body {
+    height: 400px;
+    display: flex;
+    flex-direction: column;
+    background: #f8f9fa;
+    transition: all 0.3s;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+}
+
+.message {
+    margin-bottom: 15px;
+    display: flex;
+    flex-direction: column;
+}
+
+.ai-message {
+    align-items: flex-start;
+}
+
+.user-message {
+    align-items: flex-end;
+}
+
+.message-content {
+    max-width: 80%;
+    padding: 10px 15px;
+    border-radius: 15px;
+    font-size: 14px;
+    line-height: 1.5;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.ai-message .message-content {
+    background: #e9ecef;
+    color: #1a1a1a;
+    border-bottom-left-radius: 5px;
+}
+
+.user-message .message-content {
+    background: #4361ee;
+    color: white;
+    border-bottom-right-radius: 5px;
+}
+
+.message-time {
+    font-size: 10px;
+    color: #999;
+    margin-top: 3px;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+.chat-input-area {
+    display: flex;
+    padding: 10px;
+    background: white;
+    border-top: 1px solid #dee2e6;
+}
+
+.chat-input-area input {
+    flex: 1;
+    padding: 10px 15px;
+    border: 1px solid #dee2e6;
+    border-radius: 20px;
+    margin-right: 10px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+.chat-input-area input:focus {
+    border-color: #4361ee;
+    box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.2);
+}
+
+.chat-input-area button {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: #4361ee;
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-input-area button:hover {
+    background: #3046c0;
+    transform: scale(1.05);
+}
+
+.chat-input-area button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 10px 15px;
+    background: #e9ecef;
+    border-radius: 15px;
+    width: fit-content;
+}
+
+.typing-indicator span {
+    height: 8px;
+    width: 8px;
+    background: #4361ee;
+    border-radius: 50%;
+    display: inline-block;
+    animation: typing 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0; }
+
+@keyframes typing {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.6; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+.chat-close {
+    cursor: pointer;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    transition: all 0.3s;
+}
+
+.chat-close:hover {
+    background: rgba(255,255,255,0.3);
+    transform: rotate(90deg);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .chat-widget {
+        width: 300px;
+        bottom: 10px;
+        right: 10px;
+    }
+    
+    .chat-body {
+        height: 350px;
+    }
+}
+</style>
+
+<div class="chat-widget" id="aiChatWidget">
+    <div class="chat-header" onclick="toggleChat()">
+        <div class="chat-header-left">
+            <i class="fas fa-robot"></i>
+            <span>Trợ lý AI Gemini</span>
+        </div>
+        <div class="chat-close" onclick="event.stopPropagation(); toggleChat()">
+            <i class="fas fa-chevron-up" id="chatToggleIcon"></i>
+        </div>
+    </div>
+    
+    <div class="chat-body" id="chatBody">
+        <div class="chat-messages" id="chatMessages">
+            <!-- Tin nhắn chào mừng -->
+            <div class="message ai-message">
+                <div class="message-content">
+                    👋 Xin chào! Tôi là trợ lý AI chuyên về SQL.<br><br>
+                    Tôi có thể giúp bạn:
+                    • 📝 Viết câu lệnh SELECT, INSERT, UPDATE, DELETE
+                    • 🔗 Cách JOIN các bảng
+                    • 📊 Sử dụng GROUP BY và hàm tổng hợp
+                    • 💡 Gợi ý giải bài tập SQL<br><br>
+                    Bạn cần hỏi gì không?
+                </div>
+                <div class="message-time">
+                    <i class="far fa-clock"></i> Vừa xong
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-input-area">
+            <input type="text" id="chatInput" 
+                   placeholder="Nhập câu hỏi về SQL..." 
+                   onkeypress="if(event.key === 'Enter') sendChatMessage()">
+            <button onclick="sendChatMessage()" id="sendChatBtn">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let chatVisible = true;
+
+// Hàm toggle chat
+function toggleChat() {
+    const chatBody = document.getElementById('chatBody');
+    const icon = document.getElementById('chatToggleIcon');
+    
+    if (chatVisible) {
+        chatBody.style.display = 'none';
+        icon.className = 'fas fa-chevron-down';
+    } else {
+        chatBody.style.display = 'flex';
+        icon.className = 'fas fa-chevron-up';
+    }
+    chatVisible = !chatVisible;
+}
+
+// Hàm gửi tin nhắn
+async function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const message = input.value.trim();
+    const sendBtn = document.getElementById('sendChatBtn');
+    
+    if (!message) {
+        alert('Vui lòng nhập câu hỏi!');
+        return;
+    }
+    
+    // Disable input và button
+    input.disabled = true;
+    sendBtn.disabled = true;
+    
+    // Hiển thị tin nhắn user
+    addMessage(message, 'user');
+    input.value = '';
+    
+    // Hiển thị typing indicator
+    const typingId = showTypingIndicator();
+    
+    try {
+        // Lấy context từ bài tập hiện tại
+        const exerciseTitle = document.getElementById('exerciseTitle')?.textContent || '';
+        const exerciseDesc = document.getElementById('exerciseDescription')?.textContent || '';
+        const context = `${exerciseTitle}: ${exerciseDesc}`;
+        
+        console.log('Sending message:', message);
+        console.log('Context:', context);
+        
+        const response = await fetch('/api/ai-chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                message: message,
+                context: context
+            })
+        });
+        
+        const data = await response.json();
+        console.log('AI Response:', data);
+        
+        // Xóa typing indicator
+        removeTypingIndicator(typingId);
+        
+        if (data.success) {
+            addMessage(data.response, 'ai');
+        } else {
+            addMessage('❌ Xin lỗi, tôi gặp sự cố. Vui lòng thử lại sau!', 'ai');
+        }
+    } catch (error) {
+        console.error('Chat error:', error);
+        removeTypingIndicator(typingId);
+        addMessage('❌ Có lỗi kết nối. Vui lòng kiểm tra kết nối mạng!', 'ai');
+    } finally {
+        // Enable lại input và button
+        input.disabled = false;
+        sendBtn.disabled = false;
+        input.focus();
+    }
+}
+
+// Hàm thêm tin nhắn vào khung chat
+function addMessage(text, sender) {
+    const messagesDiv = document.getElementById('chatMessages');
+    if (!messagesDiv) return;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}-message`;
+    
+    // Xử lý text để hiển thị đúng
+    const formattedText = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>');
+    
+    const time = new Date().toLocaleTimeString('vi-VN', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+    
+    messageDiv.innerHTML = `
+        <div class="message-content">${formattedText}</div>
+        <div class="message-time">
+            <i class="far fa-clock"></i> ${time}
+        </div>
+    `;
+    
+    messagesDiv.appendChild(messageDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+// Hàm hiển thị typing indicator
+function showTypingIndicator() {
+    const messagesDiv = document.getElementById('chatMessages');
+    if (!messagesDiv) return null;
+    
+    const id = 'typing-' + Date.now();
+    
+    const typingDiv = document.createElement('div');
+    typingDiv.id = id;
+    typingDiv.className = 'message ai-message';
+    typingDiv.innerHTML = `
+        <div class="typing-indicator">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+        <div class="message-time">
+            <i class="far fa-clock"></i> Đang suy nghĩ...
+        </div>
+    `;
+    
+    messagesDiv.appendChild(typingDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    return id;
+}
+
+// Hàm xóa typing indicator
+function removeTypingIndicator(id) {
+    if (!id) return;
+    const element = document.getElementById(id);
+    if (element) element.remove();
+}
+
+// Khởi tạo chat widget khi trang load xong
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Chat widget initialized');
+    
+    // Thêm CSS animation nếu chưa có
+    if (!document.querySelector('#chatStyles')) {
+        const style = document.createElement('style');
+        style.id = 'chatStyles';
+        style.textContent = `
+            @keyframes typing {
+                0%, 80%, 100% { transform: scale(0.6); opacity: 0.6; }
+                40% { transform: scale(1); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+});
+</script>

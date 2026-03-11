@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-edit"></i> Chỉnh sửa bản thu âm</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/banthuam/edit/{{ banthuam.idbanthuam }}" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <!-- Bài hát -->
+                        <div class="mb-3">
+                            <label for="idbannhac" class="form-label">
+                                Bài hát <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="idbannhac" name="idbannhac" required>
+                                <option value="">-- Chọn bài hát --</option>
+                                {% for song in songs %}
+                                <option value="{{ song.idbannhac }}" 
+                                    {% if song.idbannhac == banthuam.idbannhac %}selected{% endif %}>
+                                    {{ song.tenbannhac }} - {{ song.tennhacsi }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- Ca sĩ -->
+                        <div class="mb-3">
+                            <label for="idcasi" class="form-label">
+                                Ca sĩ <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="idcasi" name="idcasi" required>
+                                <option value="">-- Chọn ca sĩ --</option>
+                                {% for artist in artists %}
+                                <option value="{{ artist.idcasi }}" 
+                                    {% if artist.idcasi == banthuam.idcasi %}selected{% endif %}>
+                                    {{ artist.tencasi }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- Ngày thu âm -->
+                        <div class="mb-3">
+                            <label for="ngaythuam" class="form-label">Ngày thu âm</label>
+                            <input type="date" class="form-control" id="ngaythuam" name="ngaythuam" 
+                                   value="{{ banthuam.ngaythuam.strftime('%Y-%m-%d') if banthuam.ngaythuam else '' }}">
+                        </div>
+                        
+                        <!-- Thời lượng -->
+                        <div class="mb-3">
+                            <label for="thoiluong" class="form-label">Thời lượng</label>
+                            <input type="text" class="form-control" id="thoiluong" name="thoiluong" 
+                                   value="{{ banthuam.thoiluong or '' }}" placeholder="03:45">
+                            <div class="form-text">Định dạng: mm:ss</div>
+                        </div>
+                        
+                        <!-- File âm thanh -->
+                        <div class="mb-3">
+                            <label for="audio_file" class="form-label">File âm thanh</label>
+                            {% if banthuam.file_path %}
+                            <div class="mb-2">
+                                <audio controls class="w-100">
+                                    <source src="{{ url_for('static', filename='recordings/' + banthuam.file_path) }}" type="audio/mpeg">
+                                </audio>
+                                <div class="form-text">File hiện tại: {{ banthuam.file_path }}</div>
+                            </div>
+                            {% endif %}
+                            <input class="form-control" type="file" id="audio_file" name="audio_file" accept=".mp3,.wav,.aac">
+                            <div class="form-text">Để trống nếu không thay đổi file. Chấp nhận: MP3, WAV, AAC (tối đa 20MB)</div>
+                        </div>
+                        
+                        <!-- Lời bài hát -->
+                        <div class="mb-3">
+                            <label for="lyrics" class="form-label">Lời bài hát</label>
+                            <textarea class="form-control" id="lyrics" name="lyrics" rows="5" placeholder="Nhập lời bài hát...">{{ banthuam.lyrics or '' }}</textarea>
+                        </div>
+                        
+                        <!-- Ghi chú -->
+                        <div class="mb-3">
+                            <label for="ghichu" class="form-label">Ghi chú</label>
+                            <textarea class="form-control" id="ghichu" name="ghichu" rows="3" placeholder="Nhập ghi chú...">{{ banthuam.ghichu or '' }}</textarea>
+                        </div>
+                        
+                        <!-- Thông tin thêm -->
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> 
+                            <strong>Bài hát:</strong> {{ banthuam.tenbannhac }} | 
+                            <strong>Ca sĩ:</strong> {{ banthuam.tencasi }} | 
+                            <strong>Nhạc sĩ:</strong> {{ banthuam.tennhacsi }}
+                        </div>
+                        
+                        <!-- Nút submit -->
+                        <div class="d-flex justify-content-between">
+                            <a href="/banthuam/detail/{{ banthuam.idbanthuam }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Quay lại
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Lưu thay đổi
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Validate thời lượng
+document.getElementById('thoiluong').addEventListener('input', function(e) {
+    let value = e.target.value;
+    // Tự động thêm dấu : sau 2 số
+    if (value.length === 2 && !value.includes(':')) {
+        e.target.value = value + ':';
+    }
+});
+
+// Validate form
+document.querySelector('form').addEventListener('submit', function(e) {
+    const thoiluong = document.getElementById('thoiluong').value;
+    if (thoiluong && !/^[0-9]{1,2}:[0-9]{2}$/.test(thoiluong)) {
+        e.preventDefault();
+        alert('Thời lượng phải có định dạng mm:ss (ví dụ: 03:45)');
+        return false;
+    }
+    
+    const fileInput = document.getElementById('audio_file');
+    if (fileInput.files[0] && fileInput.files[0].size > 20 * 1024 * 1024) {
+        e.preventDefault();
+        alert('File âm thanh không được vượt quá 20MB');
+        return false;
+    }
+});
+</script>
+
+<style>
+.form-control:focus, .form-select:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+audio {
+    max-width: 100%;
+    border-radius: 30px;
+}
+</style>
+{% endblock %}

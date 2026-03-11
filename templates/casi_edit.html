@@ -1,0 +1,420 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="bi bi-pencil-square"></i> Chỉnh sửa Ca sĩ</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/casi/edit/{{ casi.idcasi }}" enctype="multipart/form-data" id="editForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <!-- Tên ca sĩ -->
+                        <div class="mb-3">
+                            <label for="tencasi" class="form-label">
+                                Tên ca sĩ <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="tencasi" 
+                                   name="tencasi" 
+                                   value="{{ casi.tencasi }}" 
+                                   required
+                                   maxlength="50">
+                            <div class="invalid-feedback">
+                                Vui lòng nhập tên ca sĩ
+                            </div>
+                        </div>
+                        
+                        <!-- Ngày sinh -->
+                        <div class="mb-3">
+                            <label for="ngaysinh" class="form-label">Ngày sinh</label>
+                            <input type="date" 
+                                   class="form-control" 
+                                   id="ngaysinh" 
+                                   name="ngaysinh" 
+                                   value="{{ casi.ngaysinh.strftime('%Y-%m-%d') if casi.ngaysinh else '' }}">
+                            <div class="form-text">Định dạng: Năm-Tháng-Ngày</div>
+                        </div>
+                        
+                        <!-- Ảnh đại diện -->
+                        <div class="mb-3">
+                            <label for="avatar" class="form-label">Ảnh đại diện</label>
+                            
+                            {% if casi.anhdaidien %}
+                                <div class="mb-2" id="currentAvatarContainer">
+                                    <div class="position-relative d-inline-block">
+                                        <img src="{{ url_for('static', filename='images/singers/' + casi.anhdaidien) }}" 
+                                             alt="Ảnh đại diện" 
+                                             class="img-thumbnail" 
+                                             style="max-height: 200px; max-width: 200px; object-fit: cover;"
+                                             id="currentAvatar"
+                                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/default-avatar.jpg') }}';">
+                                        <button type="button" 
+                                                class="btn btn-sm btn-danger position-absolute top-0 end-0" 
+                                                onclick="removeCurrentAvatar()"
+                                                style="border-radius: 50%; padding: 5px 8px;">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                    </div>
+                                    <div class="form-text mt-2">
+                                        Ảnh hiện tại: {{ casi.anhdaidien }}
+                                        <br>
+                                        <a href="#" class="text-danger small" onclick="removeCurrentAvatar(); return false;">
+                                            <i class="bi bi-trash"></i> Xóa ảnh này
+                                        </a>
+                                    </div>
+                                    <input type="hidden" name="remove_avatar" id="removeAvatar" value="false">
+                                </div>
+                            {% else %}
+                                <div class="mb-2 text-muted fst-italic">
+                                    <i class="bi bi-image"></i> Chưa có ảnh đại diện
+                                </div>
+                            {% endif %}
+                            
+                            <input class="form-control" 
+                                   type="file" 
+                                   id="avatar" 
+                                   name="avatar" 
+                                   accept="image/jpeg,image/png,image/gif,image/webp">
+                            <div class="form-text">
+                                <i class="bi bi-info-circle"></i> 
+                                Để trống nếu không thay đổi ảnh. 
+                                Định dạng cho phép: JPEG, PNG, GIF, WEBP. Kích thước tối đa: 5MB
+                            </div>
+                            
+                            <!-- Preview ảnh mới -->
+                            <div id="avatarPreview" class="mt-3" style="display: none;">
+                                <label class="form-label text-success">Ảnh mới:</label>
+                                <div class="position-relative d-inline-block">
+                                    <img src="#" alt="Preview" class="img-thumbnail" style="max-height: 150px; max-width: 150px; object-fit: cover;">
+                                    <button type="button" 
+                                            class="btn btn-sm btn-secondary position-absolute top-0 end-0" 
+                                            onclick="clearPreview()"
+                                            style="border-radius: 50%; padding: 2px 6px;">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Sự nghiệp -->
+                        <div class="mb-3">
+                            <label for="sunghiep" class="form-label">Sự nghiệp</label>
+                            <textarea class="form-control" 
+                                      id="sunghiep" 
+                                      name="sunghiep" 
+                                      rows="5"
+                                      maxlength="2000"
+                                      placeholder="Nhập thông tin về sự nghiệp của ca sĩ...">{{ casi.sunghiep or '' }}</textarea>
+                            <div class="d-flex justify-content-between mt-1">
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i> Có thể nhập tối đa 2000 ký tự
+                                </small>
+                                <small class="text-muted">
+                                    <span id="sunghiepCount">0</span>/2000
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <!-- Nút submit -->
+                        <div class="d-flex justify-content-between align-items-center mt-4">
+                            <a href="/casi/{{ casi.idcasi }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left"></i> Quay lại
+                            </a>
+                            <div>
+                                <button type="reset" class="btn btn-outline-warning me-2" onclick="resetForm()">
+                                    <i class="bi bi-arrow-counterclockwise"></i> Nhập lại
+                                </button>
+                                <button type="submit" class="btn btn-primary" id="submitBtn">
+                                    <i class="bi bi-save"></i> Lưu thay đổi
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Khởi tạo khi trang load
+document.addEventListener('DOMContentLoaded', function() {
+    // Đếm ký tự sự nghiệp
+    const sunghiep = document.getElementById('sunghiep');
+    const sunghiepCount = document.getElementById('sunghiepCount');
+    
+    if (sunghiep) {
+        sunghiepCount.textContent = sunghiep.value.length;
+        sunghiep.addEventListener('input', function() {
+            const count = this.value.length;
+            sunghiepCount.textContent = count;
+            
+            // Đổi màu khi gần đạt giới hạn
+            if (count > 1800) {
+                sunghiepCount.className = 'text-warning fw-bold';
+            } else if (count > 1900) {
+                sunghiepCount.className = 'text-danger fw-bold';
+            } else {
+                sunghiepCount.className = 'text-muted';
+            }
+        });
+    }
+    
+    // Xử lý preview ảnh
+    const avatarInput = document.getElementById('avatar');
+    const avatarPreview = document.getElementById('avatarPreview');
+    const previewImg = avatarPreview.querySelector('img');
+    
+    avatarInput.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+            // Kiểm tra kích thước file
+            if (this.files[0].size > 5 * 1024 * 1024) {
+                alert('Ảnh không được vượt quá 5MB');
+                this.value = '';
+                avatarPreview.style.display = 'none';
+                return;
+            }
+            
+            // Kiểm tra định dạng file
+            const fileType = this.files[0].type;
+            if (!fileType.match('image.*')) {
+                alert('Vui lòng chọn file ảnh (JPEG, PNG, GIF, WEBP)');
+                this.value = '';
+                avatarPreview.style.display = 'none';
+                return;
+            }
+            
+            // Hiển thị preview
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                previewImg.src = e.target.result;
+                avatarPreview.style.display = 'block';
+            };
+            reader.readAsDataURL(this.files[0]);
+        } else {
+            avatarPreview.style.display = 'none';
+        }
+    });
+    
+    // Định dạng ngày sinh
+    const ngaysinhInput = document.getElementById('ngaysinh');
+    if (ngaysinhInput.value) {
+        try {
+            const date = new Date(ngaysinhInput.value);
+            if (!isNaN(date.getTime())) {
+                ngaysinhInput.valueAsDate = date;
+            }
+        } catch (e) {
+            console.log('Invalid date');
+        }
+    }
+    
+    // Validate form khi submit
+    document.getElementById('editForm').addEventListener('submit', function(e) {
+        const tencasi = document.getElementById('tencasi').value.trim();
+        if (!tencasi) {
+            e.preventDefault();
+            alert('Vui lòng nhập tên ca sĩ');
+            document.getElementById('tencasi').focus();
+            return;
+        }
+        
+        const fileInput = document.getElementById('avatar');
+        if (fileInput.files[0] && fileInput.files[0].size > 5 * 1024 * 1024) {
+            e.preventDefault();
+            alert('Ảnh tải lên không được vượt quá 5MB');
+            return;
+        }
+    });
+});
+
+// Hàm xóa ảnh hiện tại
+function removeCurrentAvatar() {
+    if (confirm('Bạn có chắc muốn xóa ảnh đại diện này?')) {
+        document.getElementById('removeAvatar').value = 'true';
+        document.getElementById('currentAvatarContainer').style.display = 'none';
+        
+        // Hiển thị thông báo
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-info alert-dismissible fade show mt-2';
+        alertDiv.innerHTML = `
+            <i class="bi bi-check-circle"></i> Đã đánh dấu xóa ảnh cũ
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.getElementById('editForm').insertBefore(alertDiv, document.getElementById('avatar'));
+    }
+}
+
+// Hàm xóa preview
+function clearPreview() {
+    document.getElementById('avatar').value = '';
+    document.getElementById('avatarPreview').style.display = 'none';
+}
+
+// Hàm reset form về giá trị ban đầu
+function resetForm() {
+    if (confirm('Bạn có chắc muốn nhập lại tất cả?')) {
+        document.getElementById('editForm').reset();
+        
+        // Reset preview
+        document.getElementById('avatarPreview').style.display = 'none';
+        
+        // Reset remove_avatar flag
+        document.getElementById('removeAvatar').value = 'false';
+        
+        // Hiển thị lại container ảnh cũ nếu đã ẩn
+        const currentContainer = document.getElementById('currentAvatarContainer');
+        if (currentContainer) {
+            currentContainer.style.display = 'block';
+        }
+        
+        // Reset count
+        const sunghiep = document.getElementById('sunghiep');
+        if (sunghiep) {
+            document.getElementById('sunghiepCount').textContent = sunghiep.value.length;
+        }
+    }
+}
+
+// Cảnh báo khi rời trang nếu có thay đổi chưa lưu
+let formChanged = false;
+document.getElementById('editForm').addEventListener('input', function() {
+    formChanged = true;
+});
+
+window.addEventListener('beforeunload', function(e) {
+    if (formChanged) {
+        e.preventDefault();
+        e.returnValue = 'Bạn có thay đổi chưa lưu. Bạn có chắc muốn rời khỏi trang?';
+    }
+});
+
+// Tắt cảnh báo khi submit form
+document.getElementById('editForm').addEventListener('submit', function() {
+    formChanged = false;
+});
+</script>
+
+<style>
+/* Card styling */
+.card {
+    border: none;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.card-header {
+    border-bottom: none;
+    padding: 1.2rem 1.5rem;
+}
+
+.card-header h4 {
+    font-weight: 500;
+}
+
+/* Image styling */
+.img-thumbnail {
+    border: 2px solid #dee2e6;
+    transition: all 0.3s ease;
+}
+
+.img-thumbnail:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* Form controls */
+.form-control:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.form-text {
+    font-size: 0.85rem;
+}
+
+/* Alert styling */
+.alert-info {
+    background-color: #e7f1ff;
+    border-color: #b6d4fe;
+    color: #084298;
+}
+
+/* Button styling */
+.btn-outline-secondary:hover {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-outline-warning:hover {
+    background-color: #ffc107;
+    color: #000;
+}
+
+/* Preview section */
+#avatarPreview {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Position relative for image container */
+.position-relative {
+    position: relative;
+}
+
+/* Character count styling */
+#sunghiepCount {
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .card-body {
+        padding: 1.2rem;
+    }
+    
+    .d-flex.justify-content-between {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .d-flex.justify-content-between > div {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+    }
+}
+</style>
+{% endblock %}

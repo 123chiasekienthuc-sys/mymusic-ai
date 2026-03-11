@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Trang chủ</a></li>
+            <li class="breadcrumb-item"><a href="/bannhac">Bản Nhạc</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Chi tiết</li>
+        </ol>
+    </nav>
+
+    <!-- Thông tin chính -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h3 class="mb-0">{{ bannhac.tenbannhac }}</h3>
+                <div>
+                    <a href="/bannhac/edit/{{ bannhac.idbannhac }}" class="btn btn-sm btn-light me-2">
+                        <i class="fas fa-edit me-1"></i>Sửa
+                    </a>
+                    <button class="btn btn-sm btn-light" onclick="confirmDelete()">
+                        <i class="fas fa-trash-alt me-1"></i>Xóa
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <h5 class="text-info">Thông tin cơ bản</h5>
+                        <table class="table table-sm">
+                            <tr>
+                                <th width="150">Nhạc sĩ:</th>
+                                <td>
+                                    <a href="/nhacsi/{{ bannhac.idnhacsi }}" class="text-decoration-none">
+                                        {{ bannhac.tennhacsi }}
+                                    </a>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Ngày sáng tác:</th>
+                                <td>{{ bannhac.ngaysangtac or 'N/A' }}</td>
+                            </tr>
+                            <tr>
+                                <th>Thể loại:</th>
+                                <td>{{ bannhac.theloai or 'N/A' }}</td>
+                            </tr>
+                            <tr>
+                                <th>Ngày thêm:</th>
+                                <td>{{ bannhac.ngay_them }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <h5 class="text-info">Thông tin bổ sung</h5>
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                {% if bannhac.mota %}
+                                    {{ bannhac.mota|safe }}
+                                {% else %}
+                                    <p class="text-muted mb-0">Chưa có mô tả</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Danh sách bản thu âm -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">
+                    <i class="fas fa-headphones me-2"></i>Bản Thu Âm
+                </h4>
+                <a href="/banthuam/add?bannhac={{ bannhac.idbannhac }}" class="btn btn-sm btn-light">
+                    <i class="fas fa-plus me-1"></i>Thêm bản thu âm
+                </a>
+            </div>
+        </div>
+        <div class="card-body">
+            {% if banthuam %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>STT</th>
+                            <th>Ca sĩ thể hiện</th>
+                            <th>Ngày thu âm</th>
+                            <th>Nhà sản xuất</th>
+                            <th>Hành động</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ban in banthuam %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                <a href="/casi/{{ ban.idcasi }}" class="text-decoration-none">
+                                    {{ ban.tencasi }}
+                                </a>
+                            </td>
+                            <td>{{ ban.ngaythuam or 'N/A' }}</td>
+                            <td>{{ ban.nhasanxuat or 'N/A' }}</td>
+                            <td>
+                                <a href="/banthuam/{{ ban.idbanthuam }}" class="btn btn-sm btn-outline-info me-1">
+                                    <i class="fas fa-info-circle"></i>
+                                </a>
+                                <a href="/banthuam/edit/{{ ban.idbanthuam }}" class="btn btn-sm btn-outline-primary me-1">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button class="btn btn-sm btn-outline-danger" onclick="confirmDeleteBanThuAm({{ ban.idbanthuam }}, '{{ ban.tencasi }}')">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-4">
+                <p class="text-muted">Chưa có bản thu âm nào cho bài hát này</p>
+                <a href="/banthuam/add?bannhac={{ bannhac.idbannhac }}" class="btn btn-info">
+                    <i class="fas fa-plus me-1"></i>Thêm bản thu âm đầu tiên
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Phần lời bài hát -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-info text-white">
+            <h4 class="mb-0">
+                <i class="fas fa-align-left me-2"></i>Lời bài hát
+            </h4>
+        </div>
+        <div class="card-body">
+            {% if bannhac.loibaihat %}
+            <pre class="p-3 bg-light rounded">{{ bannhac.loibaihat }}</pre>
+            {% else %}
+            <p class="text-muted">Chưa có lời bài hát</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal xác nhận xóa bản nhạc -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Xác nhận xóa</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bạn có chắc chắn muốn xóa bản nhạc <strong>{{ bannhac.tenbannhac }}</strong>?</p>
+                <p class="text-danger">Tất cả bản thu âm liên quan cũng sẽ bị xóa!</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Xóa</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal xác nhận xóa bản thu âm -->
+<div class="modal fade" id="deleteBanThuAmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Xác nhận xóa</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bạn có chắc chắn muốn xóa bản thu âm của ca sĩ <strong id="casiNameDelete"></strong>?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBanThuAmBtn">Xóa</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Xác nhận xóa bản nhạc
+function confirmDelete() {
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+    
+    document.getElementById('confirmDeleteBtn').onclick = function() {
+        fetch('/api/bannhac/{{ bannhac.idbannhac }}', {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = '/bannhac';
+            } else {
+                alert('Xóa thất bại: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Đã xảy ra lỗi khi xóa bản nhạc');
+        });
+    };
+}
+
+// Xác nhận xóa bản thu âm
+function confirmDeleteBanThuAm(id, casiName) {
+    const modal = new bootstrap.Modal(document.getElementById('deleteBanThuAmModal'));
+    document.getElementById('casiNameDelete').textContent = casiName;
+    modal.show();
+    
+    document.getElementById('confirmDeleteBanThuAmBtn').onclick = function() {
+        fetch('/api/banthuam/' + id, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Xóa thất bại: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Đã xảy ra lỗi khi xóa bản thu âm');
+        });
+    };
+}
+</script>
+
+<style>
+/* Custom CSS */
+.card-header h3, .card-header h4 {
+    font-weight: 600;
+}
+
+.table th {
+    background-color: #f8f9fa;
+}
+
+pre {
+    white-space: pre-wrap;
+    font-family: inherit;
+    margin-bottom: 0;
+}
+
+.btn-outline-info {
+    border-color: #0dcaf0;
+    color: #0dcaf0;
+}
+
+.btn-outline-info:hover {
+    background-color: #0dcaf0;
+    color: white;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .card-body .row > div {
+        margin-bottom: 1.5rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.9rem;
+    }
+}
+</style>
+{% endblock %}

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-edit"></i> Chỉnh sửa bài hát</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/bannhac/edit/{{ bannhac.idbannhac }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <!-- Tên bài hát -->
+                        <div class="mb-3">
+                            <label for="tenbannhac" class="form-label">
+                                Tên bài hát <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="tenbannhac" 
+                                   name="tenbannhac" 
+                                   value="{{ bannhac.tenbannhac }}"
+                                   required
+                                   maxlength="100"
+                                   placeholder="Nhập tên bài hát">
+                        </div>
+                        
+                        <!-- Thể loại -->
+                        <div class="mb-3">
+                            <label for="theloai" class="form-label">Thể loại</label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="theloai" 
+                                   name="theloai" 
+                                   value="{{ bannhac.theloai or '' }}"
+                                   maxlength="50"
+                                   placeholder="Nhập thể loại (VD: Nhạc trữ tình, Rock, Pop...)">
+                        </div>
+                        
+                        <!-- Nhạc sĩ -->
+                        <div class="mb-3">
+                            <label for="idnhacsi" class="form-label">
+                                Nhạc sĩ <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="idnhacsi" name="idnhacsi" required>
+                                <option value="">-- Chọn nhạc sĩ --</option>
+                                {% for ns in nhacsi_list %}
+                                <option value="{{ ns.idnhacsi }}" 
+                                    {% if ns.idnhacsi == bannhac.idnhacsi %}selected{% endif %}>
+                                    {{ ns.tennhacsi }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- Thông tin thêm -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Ngày tạo</label>
+                                <input type="text" class="form-control" value="{{ bannhac.ngay_them or 'Chưa cập nhật' }}" readonly disabled>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Nhạc sĩ hiện tại</label>
+                                <input type="text" class="form-control" value="{{ bannhac.tennhacsi }}" readonly disabled>
+                            </div>
+                        </div>
+                        
+                        <!-- Nút submit -->
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="/bannhac/{{ bannhac.idbannhac }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Quay lại
+                            </a>
+                            <div>
+                                <button type="reset" class="btn btn-warning me-2">
+                                    <i class="fas fa-undo"></i> Nhập lại
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Lưu thay đổi
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Xác nhận khi rời trang nếu có thay đổi
+let formChanged = false;
+
+document.querySelectorAll('form input, form select, form textarea').forEach(element => {
+    element.addEventListener('change', () => formChanged = true);
+    element.addEventListener('keyup', () => formChanged = true);
+});
+
+window.addEventListener('beforeunload', function(e) {
+    if (formChanged) {
+        e.preventDefault();
+        e.returnValue = 'Bạn có thay đổi chưa lưu. Bạn có chắc muốn rời khỏi trang?';
+    }
+});
+
+// Tắt cảnh báo khi submit form
+document.querySelector('form').addEventListener('submit', function() {
+    formChanged = false;
+});
+
+// Reset form
+document.querySelector('button[type="reset"]').addEventListener('click', function(e) {
+    e.preventDefault();
+    if (confirm('Bạn có chắc muốn nhập lại tất cả?')) {
+        document.querySelector('form').reset();
+        formChanged = false;
+    }
+});
+</script>
+
+<style>
+.card-header {
+    border-bottom: none;
+    padding: 1.2rem 1.5rem;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .d-flex.justify-content-between {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .d-flex.justify-content-between > div {
+        width: 100%;
+        display: flex;
+        gap: 10px;
+    }
+    
+    .btn {
+        flex: 1;
+    }
+}
+</style>
+{% endblock %}

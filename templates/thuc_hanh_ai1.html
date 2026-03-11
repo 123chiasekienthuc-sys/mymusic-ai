@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">Danh sách thử thách</h5>
+                </div>
+                <div class="list-group list-group-flush">
+                    <button class="list-group-item list-group-item-action" onclick="setExercise('Liệt kê tất cả bản nhạc của nhạc sĩ Văn Cao')">
+                        1. Truy vấn theo tên nhạc sĩ
+                    </button>
+                    <button class="list-group-item list-group-item-action" onclick="setExercise('Tìm các bản thu âm thực hiện sau năm 2020')">
+                        2. Lọc dữ liệu theo thời gian
+                    </button>
+                    <button class="list-group-item list-group-item-action" onclick="setExercise('Đếm số lượng bản nhạc của mỗi thể loại')">
+                        3. Gom nhóm và hàm COUNT
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h4 class="text-primary"><i class="fas fa-terminal"></i> Trình chấm bài SQL tự động (AI)</h4>
+                    <p class="text-muted">Đề bài: <strong id="current-task">Vui lòng chọn bài tập bên trái...</strong></p>
+                    
+                    <textarea id="sql-input" class="form-control font-monospace" rows="6" 
+                        placeholder="Nhập câu lệnh SQL tại đây..."></textarea>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
+                        <button id="btn-submit" class="btn btn-primary" onclick="submitToAI()">
+                            <i class="fas fa-paper-plane"></i> Kiểm tra với AI
+                        </button>
+                    </div>
+
+                    <div id="ai-response" class="mt-4 d-none">
+                        <div class="alert" id="response-container">
+                            <h5 id="response-title"></h5>
+                            <hr>
+                            <p id="response-text"></p>
+                            <div id="sql-suggestion" class="bg-light p-3 border rounded d-none">
+                                <h6>Gợi ý đáp án:</h6>
+                                <code class="text-danger"></code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function setExercise(desc) {
+    document.getElementById('current-task').innerText = desc;
+    document.getElementById('ai-response').classList.add('d-none');
+    document.getElementById('sql-input').value = ""; // Xóa code cũ khi đổi bài
+}
+
+function submitToAI() {
+    const sql = document.getElementById('sql-input').value;
+    const task = document.getElementById('current-task').innerText;
+    const resBox = document.getElementById('ai-response');
+    const resContainer = document.getElementById('response-container');
+    const btn = document.getElementById('btn-submit');
+
+    if(!sql || task.includes("Vui lòng chọn")) {
+        return alert("Vui lòng chọn bài tập và nhập câu lệnh SQL!");
+    }
+
+    // Hiển thị trạng thái đang xử lý
+    resBox.classList.remove('d-none');
+    document.getElementById('sql-suggestion').classList.add('d-none');
+    document.getElementById('response-title').innerText = "⏳ Đang xử lý...";
+    document.getElementById('response-text').innerText = "AI đang phân tích câu lệnh của bạn, vui lòng đợi...";
+    resContainer.className = "alert alert-info";
+    
+    // Vô hiệu hóa nút bấm để tránh spam (gây lỗi 429)
+    btn.disabled = true;
+
+    fetch('/thuc-hanh-ai', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}' 
+        },
+        body: JSON.stringify({
+            sql_query: sql,         // Đã sửa lại đúng tên biến lấy từ textarea
+            exercise_name: task     // Đã sửa lại đúng tên biến lấy từ id current-task
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Hệ thống AI đang bận hoặc hết lượt dùng thử.');
+        }
+        return response.json();
+    })
+    .then(data => {
+        if(data.status === "Dung") {
+            resContainer.className = "alert alert-success";
+            document.getElementById('response-title').innerText = "✅ Chính xác!";
+        } else if(data.status === "Loi") {
+            resContainer.className = "alert alert-danger";
+            document.getElementById('response-title').innerText = "⚠️ Lỗi hệ thống";
+        } else {
+            resContainer.className = "alert alert-warning";
+            document.getElementById('response-title').innerText = "❌ Chưa đúng";
+        }
+        
+        document.getElementById('response-text').innerText = data.feedback;
+        
+        if(data.sql_chuan) {
+            const sug = document.getElementById('sql-suggestion');
+            sug.classList.remove('d-none');
+            sug.querySelector('code').innerText = data.sql_chuan;
+        }
+    })
+    .catch(error => {
+        resContainer.className = "alert alert-danger";
+        document.getElementById('response-title').innerText = "❌ Lỗi kết nối";
+        document.getElementById('response-text').innerText = error.message;
+    })
+    .finally(() => {
+        btn.disabled = false; // Kích hoạt lại nút bấm
+    });
+}
+</script>
+{% endblock %}

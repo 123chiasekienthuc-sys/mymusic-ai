@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="hero-content text-center text-white">
+        <h1 class="display-4 fw-bold">Hệ Thống Quản Lý Âm Nhạc</h1>
+        <p class="lead">Nơi lưu trữ và quản lý thông tin nhạc sĩ, ca sĩ và tác phẩm âm nhạc</p>
+    </div>
+</div>
+
+<div class="container mt-5">
+    <div class="row">
+        <!-- Thống kê nhanh -->
+        <div class="col-md-3 mb-4">
+            <div class="card stat-card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Nhạc Sĩ</h5>
+                    <h2 id="nhacsiCount" class="fw-bold">0</h2>
+                    <a href="/nhacsi" class="btn btn-light btn-sm">Xem chi tiết</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card stat-card bg-success text-white">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Ca Sĩ</h5>
+                    <h2 id="casiCount" class="fw-bold">0</h2>
+                    <a href="/casi" class="btn btn-light btn-sm">Xem chi tiết</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card stat-card bg-info text-white">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Bản Nhạc</h5>
+                    <h2 id="bannhacCount" class="fw-bold">0</h2>
+                    <a href="/bannhac" class="btn btn-light btn-sm">Xem chi tiết</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card stat-card bg-warning text-dark">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Bản Thu Âm</h5>
+                    <h2 id="banthuamCount" class="fw-bold">0</h2>
+                    <a href="/banthuam" class="btn btn-dark btn-sm">Xem chi tiết</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mới cập nhật -->
+    <div class="row mt-4">
+       <!-- Danh sách nhạc sĩ mới nhất -->
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4><i class="fas fa-users me-2"></i>Nhạc Sĩ Mới Nhất</h4>
+            </div>
+            <div class="card-body">
+                <div class="list-group" id="latestNhacSiList">
+                    <!-- Dữ liệu sẽ được thêm bằng JavaScript -->
+                    <div class="text-center py-3">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+
+     
+        <!-- Danh sách ca sĩ mới nhất -->
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h4><i class="fas fa-microphone me-2"></i>Ca Sĩ Mới Nhất</h4>
+            </div>
+            <div class="card-body">
+                <div class="list-group" id="latestCaSiList">
+                    <!-- Dữ liệu sẽ được thêm bằng JavaScript -->
+                    <div class="text-center py-3">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bản nhạc nổi bật -->
+   <!-- Thêm vào sau phần hiển thị ca sĩ/nhạc sĩ mới nhất -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header bg-danger text-white">
+                <h4><i class="fas fa-fire me-2"></i>Bản Nhạc Nổi Bật</h4>
+            </div>
+            <div class="card-body">
+                <div class="row" id="featuredSongs">
+                    <!-- Loading spinner -->
+                    <div class="col-12 text-center py-4">
+                        <div class="spinner-border text-danger" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+	
+</div>
+
+<script>
+// Lấy dữ liệu thống kê
+document.addEventListener('DOMContentLoaded', function() {
+    // Lấy số lượng
+    fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('nhacsiCount').textContent = data.nhacsi;
+            document.getElementById('casiCount').textContent = data.casi;
+            document.getElementById('bannhacCount').textContent = data.bannhac;
+            document.getElementById('banthuamCount').textContent = data.banthuam;
+        });
+
+    // Lấy nhạc sĩ mới nhất
+    fetch('/api/nhacsi/latest')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('latestNhacSi');
+            data.forEach(item => {
+                const elem = document.createElement('a');
+                elem.href = `/nhacsi/${item.idnhacsi}`;
+                elem.className = 'list-group-item list-group-item-action';
+                elem.innerHTML = `
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">${item.tennhacsi}</h6>
+                        <small>${new Date(item.created_at).toLocaleDateString('vi-VN')}</small>
+                    </div>
+                    <p class="mb-1 text-truncate">${item.tieusu || 'Chưa có tiểu sử'}</p>
+                `;
+                container.appendChild(elem);
+            });
+        });
+
+    // Lấy ca sĩ mới nhất (tương tự)
+    // Lấy bản nhạc nổi bật (tương tự)
+});
+</script>
+
+<style>
+.hero-section {
+    background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
+                url('/static/images/music-bg.jpg');
+    background-size: cover;
+    background-position: center;
+    height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 30px;
+}
+
+.hero-content {
+    max-width: 800px;
+    padding: 20px;
+}
+
+.stat-card {
+    border-radius: 10px;
+    transition: transform 0.3s;
+    height: 100%;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+}
+
+.card {
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.list-group-item {
+    border-left: none;
+    border-right: none;
+}
+
+@media (max-width: 768px) {
+    .hero-section {
+        height: 300px;
+    }
+    
+    .hero-content h1 {
+        font-size: 2.2rem;
+    }
+}
+</style>
+{% endblock %}

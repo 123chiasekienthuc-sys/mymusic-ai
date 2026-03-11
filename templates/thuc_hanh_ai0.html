@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4 border-0">
+                <div class="card-header bg-dark text-white py-3">
+                    <h5 class="mb-0"><i class="fas fa-list-ul me-2"></i>Danh sách thử thách</h5>
+                </div>
+                <div class="list-group list-group-flush">
+                    <button class="list-group-item list-group-item-action py-3" onclick="setExercise('Liệt kê tất cả bản nhạc của nhạc sĩ Văn Cao')">
+                        <span class="badge bg-primary rounded-pill me-2">1</span> Truy vấn theo tên nhạc sĩ
+                    </button>
+                    <button class="list-group-item list-group-item-action py-3" onclick="setExercise('Tìm các bản thu âm thực hiện sau năm 2020')">
+                        <span class="badge bg-primary rounded-pill me-2">2</span> Lọc dữ liệu theo thời gian
+                    </button>
+                    <button class="list-group-item list-group-item-action py-3" onclick="setExercise('Đếm số lượng bản nhạc của mỗi thể loại')">
+                        <span class="badge bg-primary rounded-pill me-2">3</span> Gom nhóm và hàm COUNT
+                    </button>
+                    <button class="list-group-item list-group-item-action py-3" onclick="setExercise('Tìm ca sĩ có nhiều bản thu âm nhất')">
+                        <span class="badge bg-primary rounded-pill me-2">4</span> Truy vấn nâng cao
+                    </button>
+                    <button class="list-group-item list-group-item-action py-3" onclick="setExercise('Liệt kê bản nhạc kèm tên nhạc sĩ và số lượng bản thu')">
+                        <span class="badge bg-primary rounded-pill me-2">5</span> Kết hợp nhiều bảng
+                    </button>
+                </div>
+            </div>
+            
+            <div class="alert alert-info shadow-sm">
+                <small><i class="fas fa-info-circle"></i> <strong>Hướng dẫn:</strong> Chọn bài tập bên trên, nhập câu lệnh SQL vào ô bên phải và nhấn nút để kiểm tra.</small>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-4">
+                    <h4 class="text-primary d-flex align-items-center mb-3">
+                        <i class="fas fa-robot me-2"></i> Trình chấm bài SQL
+                    </h4>
+                    
+                    <div class="mb-3 p-3 bg-light rounded border-start border-4 border-primary">
+                        <p class="mb-0 text-muted">Đề bài hiện tại:</p>
+                        <strong id="current-task" class="fs-5 text-dark">Vui lòng chọn bài tập bên trái...</strong>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="sql-input" class="form-label fw-bold">Câu lệnh SQL của bạn:</label>
+                        <textarea id="sql-input" class="form-control font-monospace shadow-sm" rows="8" 
+                            style="background-color: #f8f9fa; color: #212529;"
+                            placeholder="SELECT * FROM ..."></textarea>
+                        <small class="text-muted">Nhấn Ctrl + Enter để gửi nhanh</small>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
+                        <button id="btn-submit" class="btn btn-primary btn-lg px-4 shadow" onclick="submitToAI()">
+                            <i class="fas fa-paper-plane me-2"></i> Gửi bài
+                        </button>
+                    </div>
+
+                    <div id="ai-response" class="mt-4" style="display: none;">
+                        <div class="alert shadow-sm border-0" id="response-container">
+                            <h5 id="response-title" class="fw-bold"></h5>
+                            <hr>
+                            <p id="response-text" class="mb-3"></p>
+                            
+                            <div id="sql-suggestion" class="bg-white p-3 border rounded shadow-sm" style="display: none;">
+                                <h6 class="text-muted small text-uppercase fw-bold mb-2">Gợi ý câu lệnh chuẩn:</h6>
+                                <pre class="mb-0"><code id="suggestion-code" class="text-success font-monospace" style="word-break: break-all; white-space: pre-wrap;"></code></pre>
+                                <button class="btn btn-sm btn-outline-primary mt-2" onclick="copySuggestion()">
+                                    <i class="fas fa-copy me-1"></i> Sao chép
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Hàm lấy CSRF token
+function getCSRFToken() {
+    return '{{ csrf_token() }}';
+}
+
+/**
+ * Thiết lập bài tập hiện tại
+ */
+function setExercise(desc) {
+    document.getElementById('current-task').innerText = desc;
+    document.getElementById('ai-response').style.display = 'none';
+    document.getElementById('sql-input').value = '';
+    document.getElementById('sql-input').focus();
+    document.getElementById('response-container').className = "alert alert-secondary py-4";
+}
+
+/**
+ * Gửi yêu cầu chấm bài
+ */
+function submitToAI() {
+    const sqlValue = document.getElementById('sql-input').value.trim();
+    const taskValue = document.getElementById('current-task').innerText;
+    const btn = document.getElementById('btn-submit');
+    const resBox = document.getElementById('ai-response');
+    const resContainer = document.getElementById('response-container');
+    const sugBox = document.getElementById('sql-suggestion');
+
+    // Kiểm tra dữ liệu
+    if (!sqlValue) {
+        alert('⚠️ Vui lòng nhập câu lệnh SQL!');
+        return;
+    }
+    if (taskValue.includes('Vui lòng chọn')) {
+        alert('⚠️ Vui lòng chọn bài tập!');
+        return;
+    }
+
+    // Hiển thị loading
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Đang xử lý...';
+    
+    resBox.style.display = 'block';
+    sugBox.style.display = 'none';
+    document.getElementById('response-title').innerText = '⏳ Đang xử lý...';
+    document.getElementById('response-text').innerText = 'Vui lòng đợi trong giây lát...';
+    resContainer.className = "alert alert-secondary py-4";
+
+    // Tạo FormData
+    const formData = new FormData();
+    formData.append('sql_query', sqlValue);
+    formData.append('exercise_name', taskValue);
+
+    // Gửi request
+    fetch('/thuc-hanh-ai', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCSRFToken()
+        },
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Xử lý kết quả
+        if (data.status === 'Dung') {
+            resContainer.className = "alert alert-success border-start border-5 border-success py-4";
+            document.getElementById('response-title').innerHTML = '<i class="fas fa-check-circle me-2"></i> CHÍNH XÁC!';
+        } else if (data.status === 'Loi') {
+            resContainer.className = "alert alert-danger border-start border-5 border-danger py-4";
+            document.getElementById('response-title').innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i> LỖI';
+        } else {
+            resContainer.className = "alert alert-warning border-start border-5 border-warning py-4";
+            document.getElementById('response-title').innerHTML = '<i class="fas fa-times-circle me-2"></i> CHƯA CHÍNH XÁC';
+        }
+        
+        document.getElementById('response-text').innerText = data.feedback || 'Không có phản hồi';
+        
+        if (data.sql_chuan) {
+            sugBox.style.display = 'block';
+            document.getElementById('suggestion-code').innerText = data.sql_chuan;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        resContainer.className = "alert alert-danger py-4";
+        document.getElementById('response-title').innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i> LỖI KẾT NỐI';
+        document.getElementById('response-text').innerText = 'Không thể kết nối đến server. Vui lòng thử lại!';
+        sugBox.style.display = 'none';
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane me-2"></i> Gửi bài';
+    });
+}
+
+/**
+ * Sao chép SQL gợi ý
+ */
+function copySuggestion() {
+    const sqlCode = document.getElementById('suggestion-code').innerText;
+    navigator.clipboard.writeText(sqlCode).then(() => {
+        alert('✅ Đã sao chép SQL!');
+    }).catch(() => {
+        alert('❌ Không thể sao chép. Vui lòng copy thủ công.');
+    });
+}
+
+// Xử lý phím tắt Ctrl+Enter
+document.getElementById('sql-input').addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        submitToAI();
+    }
+});
+
+// Khởi tạo tooltip
+document.addEventListener('DOMContentLoaded', function() {
+    const textarea = document.getElementById('sql-input');
+    textarea.setAttribute('title', 'Nhấn Ctrl + Enter để gửi');
+});
+</script>
+
+<style>
+/* Font chữ code */
+.font-monospace {
+    font-family: 'Courier New', Consolas, monospace !important;
+    font-size: 0.95rem;
+}
+
+/* Animation */
+#ai-response {
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* List group */
+.list-group-item-action {
+    cursor: pointer;
+    border-left: 4px solid transparent;
+    transition: all 0.2s;
+}
+
+.list-group-item-action:hover {
+    background-color: #f0f7ff;
+    border-left-color: #0d6efd;
+    transform: translateX(5px);
+}
+
+/* Badge */
+.badge.bg-primary {
+    background-color: #0d6efd !important;
+    font-size: 0.9rem;
+}
+
+/* Alert borders */
+.border-start.border-5 {
+    border-left-width: 5px !important;
+}
+
+/* Code block */
+#suggestion-code {
+    display: block;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #28a745;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .btn-lg {
+        width: 100%;
+    }
+    
+    .fs-5 {
+        font-size: 1rem !important;
+    }
+    
+    .list-group-item-action {
+        padding: 12px !important;
+    }
+}
+</style>
+{% endblock %}

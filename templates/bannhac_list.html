@@ -1,0 +1,565 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Trang chủ</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Danh sách bản nhạc</li>
+        </ol>
+    </nav>
+
+    <!-- Tiêu đề và công cụ -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">
+            <i class="fas fa-music me-2"></i>Danh Sách Bản Nhạc
+        </h1>
+        <div class="btn-group">
+            <a href="/bannhac/add" class="btn btn-primary">
+                <i class="fas fa-plus me-1"></i>Thêm mới
+            </a>
+            <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                <span class="visually-hidden">Toggle Dropdown</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><h6 class="dropdown-header"><i class="fas fa-code me-2"></i>SQL Mẫu</h6></li>
+                <li><a class="dropdown-item" href="#" onclick="askAI('Làm sao để truy vấn danh sách bản nhạc kèm tên nhạc sĩ và thể loại?')">
+                    <i class="fas fa-list me-2"></i>Danh sách bản nhạc
+                </a></li>
+                <li><a class="dropdown-item" href="#" onclick="askAI('Làm sao để thống kê số lượng bản thu âm theo từng bản nhạc?')">
+                    <i class="fas fa-chart-bar me-2"></i>Thống kê bản thu âm
+                </a></li>
+                <li><a class="dropdown-item" href="#" onclick="askAI('Làm sao để tìm bản nhạc có nhiều bản thu âm nhất?')">
+                    <i class="fas fa-trophy me-2"></i>Bản nhạc phổ biến nhất
+                </a></li>
+                <li><a class="dropdown-item" href="#" onclick="askAI('Làm sao để truy vấn bản nhạc của một nhạc sĩ cụ thể?')">
+                    <i class="fas fa-user me-2"></i>Theo nhạc sĩ
+                </a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="#" onclick="askAI('Viết câu lệnh SQL để thêm một bản nhạc mới?')">
+                    <i class="fas fa-plus-circle me-2"></i>Thêm bản nhạc
+                </a></li>
+                <li><a class="dropdown-item" href="#" onclick="askAI('Viết câu lệnh SQL để cập nhật thông tin bản nhạc?')">
+                    <i class="fas fa-edit me-2"></i>Cập nhật bản nhạc
+                </a></li>
+                <li><a class="dropdown-item" href="#" onclick="askAI('Viết câu lệnh SQL để xóa một bản nhạc?')">
+                    <i class="fas fa-trash me-2"></i>Xóa bản nhạc
+                </a></li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Thanh tìm kiếm và bộ lọc -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3 mb-md-0">
+                    <div class="input-group">
+                        <input type="text" id="searchInput" class="form-control" placeholder="Tìm kiếm bản nhạc...">
+                        <button class="btn btn-outline-secondary" type="button" id="searchBtn">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="nhacsiFilter">
+                        <option value="">Tất cả nhạc sĩ</option>
+                        {% for nhacsi in nhacsi_list %}
+                        <option value="{{ nhacsi.idnhacsi }}">{{ nhacsi.tennhacsi }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="sortSelect">
+                        <option value="newest">Mới nhất</option>
+                        <option value="oldest">Cũ nhất</option>
+                        <option value="name_asc">A-Z</option>
+                        <option value="name_desc">Z-A</option>
+                        <option value="popular">Phổ biến nhất</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Danh sách bản nhạc -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="50">STT</th>
+                            <th>Tên bản nhạc</th>
+                            <th>Nhạc sĩ</th>
+                            <th width="100">Số bản thu</th>
+                            <th>Thể loại</th>
+                            <th width="120">Ngày thêm</th>
+                            <th width="100">Hành động</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bannhac in bannhac_list %}
+                        <tr>
+                            <td class="align-middle">{{ loop.index + (page - 1) * per_page }}</td>
+                            <td class="align-middle">
+                                <a href="/bannhac/{{ bannhac.idbannhac }}" class="text-decoration-none fw-bold text-dark">
+                                    {{ bannhac.tenbannhac }}
+                                </a>
+                            </td>
+                            <td class="align-middle">
+                                <a href="/nhacsi/{{ bannhac.idnhacsi }}" class="text-decoration-none">
+                                    {{ bannhac.tennhacsi }}
+                                </a>
+                            </td>
+                            <td class="align-middle">
+                                <span class="badge bg-primary rounded-pill px-3 py-2">
+                                    {{ bannhac.soluong_banthuam or 0 }}
+                                </span>
+                            </td>
+                            <td class="align-middle">{{ bannhac.theloai or 'N/A' }}</td>
+                            <td class="align-middle">{{ bannhac.ngay_them }}</td>
+                            <td class="align-middle">
+                                <div class="btn-group" role="group">
+                                    <a href="/bannhac/edit/{{ bannhac.idbannhac }}" 
+                                       class="btn btn-sm btn-outline-primary" 
+                                       title="Sửa"
+                                       data-bs-toggle="tooltip">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-danger" 
+                                            title="Xóa"
+                                            data-bs-toggle="tooltip"
+                                            onclick="confirmDelete({{ bannhac.idbannhac }}, '{{ bannhac.tenbannhac }}')">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5">
+                                <i class="fas fa-music fa-3x text-muted mb-3"></i>
+                                <h5 class="text-muted">Chưa có bản nhạc nào</h5>
+                                <a href="/bannhac/add" class="btn btn-primary mt-2">
+                                    <i class="fas fa-plus me-1"></i>Thêm bản nhạc đầu tiên
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phân trang -->
+    {% if total_pages > 1 %}
+    <nav aria-label="Page navigation" class="mt-4">
+        <ul class="pagination justify-content-center">
+            {% if page > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="/bannhac?page={{ page - 1 }}">Trước</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <a class="page-link" href="#" tabindex="-1">Trước</a>
+            </li>
+            {% endif %}
+
+            {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                <li class="page-item active"><a class="page-link" href="#">{{ p }}</a></li>
+                {% elif p >= page - 2 and p <= page + 2 %}
+                <li class="page-item"><a class="page-link" href="/bannhac?page={{ p }}">{{ p }}</a></li>
+                {% elif p == 1 or p == total_pages %}
+                <li class="page-item"><a class="page-link" href="/bannhac?page={{ p }}">{{ p }}</a></li>
+                {% elif p == page - 3 or p == page + 3 %}
+                <li class="page-item disabled"><a class="page-link" href="#">...</a></li>
+                {% endif %}
+            {% endfor %}
+
+            {% if page < total_pages %}
+            <li class="page-item">
+                <a class="page-link" href="/bannhac?page={{ page + 1 }}">Sau</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <a class="page-link" href="#">Sau</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<!-- Modal xác nhận xóa -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Xác nhận xóa
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Bạn có chắc chắn muốn xóa bản nhạc <strong class="text-danger" id="bannhacNameToDelete"></strong>?</p>
+                <div class="alert alert-warning">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Lưu ý:</strong> Tất cả bản thu âm liên quan cũng sẽ bị xóa!
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Hủy
+                </button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+                    <i class="fas fa-trash-alt me-1"></i>Xóa
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal SQL AI -->
+<div class="modal fade" id="sqlModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-code me-2"></i>SQL Mẫu
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center py-4" id="sqlLoading">
+                    <div class="spinner-border text-info mb-3" role="status">
+                        <span class="visually-hidden">Đang tải...</span>
+                    </div>
+                    <p class="text-info">Đang tạo SQL mẫu...</p>
+                </div>
+                <div id="sqlResult" style="display: none;">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">📝 Câu hỏi:</label>
+                        <div class="bg-light p-3 rounded" id="sqlQuestion"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">💻 Câu lệnh SQL mẫu:</label>
+                        <pre class="bg-dark text-light p-3 rounded" style="overflow-x: auto; max-height: 300px;" id="sqlCode"></pre>
+                        <button class="btn btn-sm btn-outline-secondary mt-2" onclick="copySQL()">
+                            <i class="fas fa-copy me-1"></i>Sao chép
+                        </button>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">📖 Giải thích:</label>
+                        <div class="bg-light p-3 rounded" id="sqlExplanation"></div>
+                    </div>
+                </div>
+                <div id="sqlError" style="display: none;" class="alert alert-danger"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Khởi tạo tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function(tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+
+// Xác nhận xóa bản nhạc
+function confirmDelete(id, name) {
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    document.getElementById('bannhacNameToDelete').textContent = name;
+    
+    document.getElementById('confirmDeleteBtn').onclick = function() {
+        deleteBannhac(id);
+        modal.hide();
+    };
+    
+    modal.show();
+}
+
+// Gọi API xóa bản nhạc
+function deleteBannhac(id) {
+    const deleteBtn = document.getElementById('confirmDeleteBtn');
+    deleteBtn.disabled = true;
+    deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang xóa...';
+    
+    fetch(`/api/bannhac/${id}`, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('success', 'Xóa bản nhạc thành công!');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast('error', 'Xóa thất bại: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('error', 'Đã xảy ra lỗi khi xóa bản nhạc');
+    })
+    .finally(() => {
+        deleteBtn.disabled = false;
+        deleteBtn.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Xóa';
+    });
+}
+
+// Tìm kiếm bản nhạc
+document.getElementById('searchBtn').addEventListener('click', performSearch);
+document.getElementById('searchInput').addEventListener('keyup', function(e) {
+    if (e.key === 'Enter') performSearch();
+});
+
+function performSearch() {
+    const keyword = document.getElementById('searchInput').value.toLowerCase().trim();
+    const rows = document.querySelectorAll('tbody tr');
+    let visibleCount = 0;
+    
+    rows.forEach(row => {
+        const name = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+        const shouldShow = keyword === '' || name.includes(keyword);
+        row.style.display = shouldShow ? '' : 'none';
+        if (shouldShow) visibleCount++;
+    });
+    
+    // Hiển thị thông báo nếu không tìm thấy
+    const tbody = document.querySelector('tbody');
+    const noResultRow = document.getElementById('noResultRow');
+    
+    if (visibleCount === 0 && keyword !== '') {
+        if (!noResultRow) {
+            const tr = document.createElement('tr');
+            tr.id = 'noResultRow';
+            tr.innerHTML = `
+                <td colspan="7" class="text-center py-5">
+                    <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">Không tìm thấy bản nhạc "${keyword}"</h5>
+                    <button class="btn btn-outline-secondary mt-2" onclick="clearSearch()">
+                        <i class="fas fa-times me-1"></i>Xóa tìm kiếm
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+    } else if (noResultRow) {
+        noResultRow.remove();
+    }
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    performSearch();
+}
+
+// Lọc theo nhạc sĩ
+document.getElementById('nhacsiFilter').addEventListener('change', function() {
+    const nhacsiId = this.value;
+    window.location.href = `/bannhac?nhacsi=${nhacsiId}`;
+});
+
+// Sắp xếp
+document.getElementById('sortSelect').addEventListener('change', function() {
+    const sortBy = this.value;
+    window.location.href = `/bannhac?sort=${sortBy}`;
+});
+
+// Hàm gọi AI để xem SQL mẫu
+function askAI(question) {
+    // Hiển thị modal
+    const sqlModal = new bootstrap.Modal(document.getElementById('sqlModal'));
+    sqlModal.show();
+    
+    // Reset modal
+    document.getElementById('sqlLoading').style.display = 'block';
+    document.getElementById('sqlResult').style.display = 'none';
+    document.getElementById('sqlError').style.display = 'none';
+    document.getElementById('sqlQuestion').textContent = question;
+    
+    // Gọi API AI
+    fetch('/thuc-hanh-ai', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            sql_query: '',
+            exercise_name: question
+        })
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Không thể kết nối với máy chủ');
+        return response.json();
+    })
+    .then(data => {
+        document.getElementById('sqlLoading').style.display = 'none';
+        
+        if (data.status === 'Dung' || data.status === 'Sai') {
+            document.getElementById('sqlResult').style.display = 'block';
+            document.getElementById('sqlCode').textContent = data.sql_chuan || 'Không có SQL mẫu';
+            document.getElementById('sqlExplanation').textContent = data.feedback || 'Không có giải thích';
+        } else {
+            document.getElementById('sqlError').style.display = 'block';
+            document.getElementById('sqlError').textContent = data.feedback || 'Không thể tạo SQL mẫu';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('sqlLoading').style.display = 'none';
+        document.getElementById('sqlError').style.display = 'block';
+        document.getElementById('sqlError').textContent = 'Lỗi kết nối đến AI: ' + error.message;
+    });
+}
+
+// Sao chép SQL
+function copySQL() {
+    const sqlCode = document.getElementById('sqlCode').textContent;
+    navigator.clipboard.writeText(sqlCode).then(() => {
+        showToast('success', 'Đã sao chép SQL vào clipboard!');
+    }).catch(() => {
+        alert('Không thể sao chép tự động. Vui lòng copy thủ công.');
+    });
+}
+
+// Hiển thị toast thông báo
+function showToast(type, message) {
+    let toastContainer = document.querySelector('.toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+        document.body.appendChild(toastContainer);
+    }
+    
+    const toastId = 'toast-' + Date.now();
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0`;
+    toast.id = toastId;
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'assertive');
+    toast.setAttribute('aria-atomic', 'true');
+    
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                <i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} me-2"></i>
+                ${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    
+    toastContainer.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast, { animation: true, autohide: true, delay: 3000 });
+    bsToast.show();
+    
+    toast.addEventListener('hidden.bs.toast', function() { this.remove(); });
+}
+</script>
+
+<style>
+/* Custom CSS */
+.table-hover tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+}
+
+.btn-group .btn {
+    padding: 0.25rem 0.5rem;
+}
+
+.btn-group .btn:hover {
+    transform: translateY(-2px);
+    transition: transform 0.2s;
+}
+
+.page-item.active .page-link {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.page-link {
+    color: #0d6efd;
+}
+
+.page-link:hover {
+    color: #0d6efd;
+}
+
+.badge.bg-primary {
+    background-color: #0d6efd !important;
+    font-size: 0.85rem;
+}
+
+/* Modal SQL */
+.modal-lg {
+    max-width: 800px;
+}
+
+#sqlCode {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.bg-info.text-white .btn-close-white {
+    filter: brightness(0) invert(1);
+}
+
+/* Animation */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.card {
+    animation: fadeIn 0.3s ease;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .d-flex.justify-content-between {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: start !important;
+    }
+    
+    .table-responsive {
+        font-size: 0.9rem;
+    }
+    
+    .btn-group .btn {
+        padding: 0.2rem 0.4rem;
+    }
+    
+    .badge.px-3 {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+}
+</style>
+{% endblock %}

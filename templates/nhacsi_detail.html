@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Trang chủ</a></li>
+            <li class="breadcrumb-item"><a href="/nhacsi">Nhạc sĩ</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Chi tiết</li>
+        </ol>
+    </nav>
+
+    <div class="row mb-5">
+        <div class="col-md-4 text-center">
+            <div class="card mb-3 shadow-sm">
+                <div class="card-body">
+                    <!-- SỬA LỖI: Container ảnh đã được tối ưu -->
+                    <div class="avatar-container mb-3">
+                        <img id="nhacsiAvatarImg" 
+                             src="{{ url_for('static', filename='images/default-avatar.jpg') }}" 
+                             alt="Ảnh nhạc sĩ" 
+                             class="img-fluid rounded-circle" 
+                             style="width: 200px; height: 200px; object-fit: cover; border: 3px solid #0d6efd;"
+                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/default-avatar.jpg') }}';">
+                        <div id="avatarCaption" class="form-text text-muted mt-2">Đang tải ảnh...</div>
+                    </div>
+                    
+                    <h3 id="nhacsiTen" class="mb-0 mt-2">-</h3>
+                    <p class="text-muted mb-2" id="nhacsiNgaysinh">-</p>
+                    <p class="text-muted"><small id="nhacsiNgaythem">-</small></p>
+                    
+                    <!-- Thêm nút chỉnh sửa nếu có quyền -->
+                    {% if session.user_role == 'admin' %}
+                    <a href="/nhacsi/edit/{{ idnhacsi }}" class="btn btn-sm btn-outline-primary mt-2">
+                        <i class="bi bi-pencil"></i> Chỉnh sửa
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">Sự nghiệp</h4>
+                </div>
+                <div class="card-body">
+                    <div id="nhacsiTieusu" class="text-justify">Đang tải...</div>
+                    
+                    <div class="mt-4 pt-3 border-top">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <h5 id="tongBaiHat" class="fw-bold">0</h5>
+                                <p class="text-muted mb-0">Bài hát</p>
+                            </div>
+                            <div class="col-4">
+                                <h5 id="tongBanThuAm" class="fw-bold">0</h5>
+                                <p class="text-muted mb-0">Bản thu âm</p>
+                            </div>
+                            <div class="col-4">
+                                <h5 id="namSangTac" class="fw-bold">--</h5>
+                                <p class="text-muted mb-0">Năm sáng tác đầu</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Danh sách bài hát</h4>
+                <button id="sortBtn" class="btn btn-sm btn-light" style="display: none;">
+                    <i class="fas fa-sort-amount-down me-1"></i>Sắp xếp
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>STT</th>
+                            <th>Tên bài hát</th>
+                            <th>Số bản thu âm</th>
+                            <th>Ngày thêm</th>
+                            <th>Hành động</th>
+                        </tr>
+                    </thead>
+                    <tbody id="baiHatTable"></tbody>
+                </table>
+            </div>
+            <div id="baiHatLoading" class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+            <div id="baiHatEmpty" class="text-center py-4 d-none">
+                <p class="text-muted">Nhạc sĩ này chưa có bài hát nào trong hệ thống</p>
+                <a href="/bannhac/add" class="btn btn-primary">Thêm bài hát mới</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const nhacsiId = {{ idnhacsi }};
+    if (nhacsiId) {
+        loadNhacsiDetail(nhacsiId);
+    } else {
+        console.error('Không tìm thấy ID nhạc sĩ');
+    }
+});
+
+/**
+ * Cập nhật ảnh nhạc sĩ - Đã sửa lỗi cache và đường dẫn
+ */
+function updateNhacsiAvatar(avatarPath, tenNhacSi) {
+    const avatarImg = document.getElementById('nhacsiAvatarImg');
+    const avatarCaption = document.getElementById('avatarCaption');
+    
+    if (!avatarImg) return;
+
+    // Tạo timestamp để chống cache
+    const timestamp = new Date().getTime();
+    
+    // Xử lý đường dẫn ảnh
+    if (avatarPath && avatarPath.trim() !== '') {
+        // Chuẩn hóa đường dẫn ảnh
+        let imagePath = avatarPath;
+        
+        // Nếu đường dẫn đã bắt đầu bằng '/static/' thì giữ nguyên, nếu không thì thêm vào
+        if (!imagePath.startsWith('/static/') && !imagePath.startsWith('static/')) {
+            imagePath = '/static/' + imagePath;
+        }
+        
+        // Thêm timestamp để tránh cache
+        const separator = imagePath.includes('?') ? '&' : '?';
+        avatarImg.src = imagePath + separator + 't=' + timestamp;
+        
+        // Cập nhật caption
+        avatarCaption.textContent = tenNhacSi ? `Ảnh của ${tenNhacSi}` : 'Ảnh nhạc sĩ';
+        avatarCaption.className = 'form-text text-success mt-2';
+    } else {
+        // Không có ảnh, dùng ảnh mặc định
+        avatarImg.src = "{{ url_for('static', filename='images/default-avatar.jpg') }}?t=" + timestamp;
+        avatarCaption.textContent = 'Chưa có ảnh đại diện';
+        avatarCaption.className = 'form-text text-muted mt-2';
+    }
+
+    // Xử lý khi ảnh lỗi
+    avatarImg.onerror = function() {
+        console.warn('Lỗi tải ảnh:', avatarPath);
+        this.src = "{{ url_for('static', filename='images/default-avatar.jpg') }}?t=" + timestamp;
+        avatarCaption.textContent = 'Không thể tải ảnh';
+        avatarCaption.className = 'form-text text-danger mt-2';
+    };
+}
+
+function loadNhacsiDetail(id) {
+    fetch(`/api/nhacsi/${id}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            const nhacsi = data.nhacsi;
+            const baihat = data.baihat || [];
+
+            // Cập nhật ảnh - SỬ DỤNG HÀM CHUYÊN DỤNG
+            updateNhacsiAvatar(nhacsi.avatar, nhacsi.tennhacsi);
+
+            // Cập nhật thông tin cơ bản
+            document.getElementById('nhacsiTen').textContent = nhacsi.tennhacsi || 'Không có tên';
+            
+            // Xử lý ngày sinh
+            if (nhacsi.ngaysinh) {
+                try {
+                    const ngaysinh = new Date(nhacsi.ngaysinh);
+                    if (!isNaN(ngaysinh.getTime())) {
+                        document.getElementById('nhacsiNgaysinh').textContent = 
+                            `Sinh ngày: ${ngaysinh.toLocaleDateString('vi-VN')}`;
+                    } else {
+                        document.getElementById('nhacsiNgaysinh').textContent = 'Ngày sinh không hợp lệ';
+                    }
+                } catch (e) {
+                    document.getElementById('nhacsiNgaysinh').textContent = nhacsi.ngaysinh;
+                }
+            } else {
+                document.getElementById('nhacsiNgaysinh').textContent = 'Chưa cập nhật ngày sinh';
+            }
+            
+            // Ngày tham gia
+            document.getElementById('nhacsiNgaythem').textContent = 
+                nhacsi.ngay_them ? `Tham gia từ: ${nhacsi.ngay_them}` : '';
+            
+            // Tiểu sử
+            document.getElementById('nhacsiTieusu').innerHTML = 
+                nhacsi.tieusu ? nhacsi.tieusu.replace(/\n/g, '<br>') : '<em>Chưa có tiểu sử</em>';
+            
+            // Xử lý danh sách bài hát
+            const tableBody = document.getElementById('baiHatTable');
+            const loadingElement = document.getElementById('baiHatLoading');
+            const emptyElement = document.getElementById('baiHatEmpty');
+            const sortBtn = document.getElementById('sortBtn');
+            
+            loadingElement.classList.add('d-none');
+            
+            if (!baihat || baihat.length === 0) {
+                emptyElement.classList.remove('d-none');
+                if (sortBtn) sortBtn.style.display = 'none';
+            } else {
+                emptyElement.classList.add('d-none');
+                if (sortBtn) sortBtn.style.display = 'inline-block';
+                
+                // Clear table
+                tableBody.innerHTML = '';
+                
+                let tongBanThuAm = 0;
+                let years = [];
+                
+                baihat.forEach((bh, index) => {
+                    tongBanThuAm += parseInt(bh.soluong_banthuam) || 0;
+                    
+                    // Xử lý năm
+                    if (bh.ngay_them) {
+                        const yearMatch = bh.ngay_them.match(/\d{4}/);
+                        if (yearMatch) {
+                            years.push(parseInt(yearMatch[0]));
+                        }
+                    }
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td><a href="/bannhac/detail/${bh.idbannhac}">${bh.tenbannhac || 'Không tên'}</a></td>
+                        <td>${bh.soluong_banthuam || 0}</td>
+                        <td>${bh.ngay_them || 'Chưa cập nhật'}</td>
+                        <td>
+                            <a href="/banthuam?bannhac=${bh.idbannhac}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-headphones me-1"></i>Nghe thử
+                            </a>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+                
+                // Cập nhật thống kê
+                document.getElementById('tongBaiHat').textContent = baihat.length;
+                document.getElementById('tongBanThuAm').textContent = tongBanThuAm;
+                
+                if (years.length > 0) {
+                    document.getElementById('namSangTac').textContent = Math.min(...years);
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Lỗi khi tải dữ liệu:', error);
+            document.getElementById('baiHatLoading').innerHTML = 
+                '<div class="alert alert-danger">Không thể tải dữ liệu. Vui lòng thử lại sau.</div>';
+            
+            // Hiển thị ảnh mặc định khi có lỗi
+            updateNhacsiAvatar(null, null);
+        });
+}
+
+// Sắp xếp bài hát theo số bản thu âm
+document.getElementById('sortBtn')?.addEventListener('click', function() {
+    const table = document.getElementById('baiHatTable');
+    const rows = Array.from(table.querySelectorAll('tr'));
+    
+    if (rows.length === 0) return;
+    
+    // Sắp xếp giảm dần theo số bản thu âm
+    rows.sort((a, b) => {
+        const aCount = parseInt(a.cells[2]?.textContent) || 0;
+        const bCount = parseInt(b.cells[2]?.textContent) || 0;
+        return bCount - aCount;
+    });
+    
+    // Cập nhật lại bảng
+    table.innerHTML = "";
+    rows.forEach((row, index) => {
+        if (row.cells[0]) {
+            row.cells[0].textContent = index + 1;
+        }
+        table.appendChild(row);
+    });
+    
+    // Đổi icon nút
+    this.innerHTML = '<i class="fas fa-sort-amount-up me-1"></i>Đã sắp xếp';
+});
+</script>
+
+<style>
+#nhacsiAvatarImg {
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+#nhacsiAvatarImg:hover {
+    transform: scale(1.05);
+}
+#nhacsiTieusu {
+    line-height: 1.8;
+    font-size: 1.05rem;
+    white-space: pre-line;
+}
+.text-justify {
+    text-align: justify;
+}
+.avatar-container {
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+</style>
+{% endblock %}

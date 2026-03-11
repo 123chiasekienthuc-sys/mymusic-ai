@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="bi bi-pencil-square"></i> Chỉnh sửa Nhạc Sĩ</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/nhacsi/edit/{{ nhacsi.idnhacsi }}" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <!-- Tên nhạc sĩ -->
+                        <div class="mb-3">
+                            <label for="tennhacsi" class="form-label">Tên nhạc sĩ <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="tennhacsi" name="tennhacsi" 
+                                   value="{{ nhacsi.tennhacsi }}" required>
+                        </div>
+                        
+                        <!-- Thông tin cơ bản -->
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="ngaysinh" class="form-label">Ngày sinh</label>
+                                <input type="date" class="form-control" id="ngaysinh" name="ngaysinh" 
+                                       value="{{ nhacsi.ngaysinh.strftime('%Y-%m-%d') if nhacsi.ngaysinh else '' }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="gioitinh" class="form-label">Giới tính</label>
+                                <select class="form-select" id="gioitinh" name="gioitinh">
+                                    <option value="Nam" {% if nhacsi.gioitinh == 'Nam' %}selected{% endif %}>Nam</option>
+                                    <option value="Nữ" {% if nhacsi.gioitinh == 'Nữ' %}selected{% endif %}>Nữ</option>
+                                    <option value="Khác" {% if nhacsi.gioitinh == 'Khác' %}selected{% endif %}>Khác</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="quequan" class="form-label">Quê quán</label>
+                                <input type="text" class="form-control" id="quequan" name="quequan" 
+                                       value="{{ nhacsi.quequan or '' }}">
+                            </div>
+                        </div>
+                        
+                        <!-- Ảnh đại diện -->
+                        <div class="mb-3">
+                            <label for="avatar" class="form-label">Ảnh đại diện</label>
+                            {% if nhacsi.avatar %}
+                                <div class="mb-2">
+                                    <img src="/static/{{ nhacsi.avatar }}" alt="Ảnh đại diện" 
+                                         class="img-thumbnail" style="max-height: 200px;">
+                                    <div class="form-text">Ảnh hiện tại</div>
+                                </div>
+                            {% endif %}
+                            <input class="form-control" type="file" id="avatar" name="avatar" accept="image/*">
+                            <div class="form-text">Để trống nếu không thay đổi ảnh</div>
+                        </div>
+                        
+                        <!-- Tiểu sử -->
+                        <div class="mb-3">
+                            <label for="tieusu" class="form-label">Tiểu sử</label>
+                            <textarea class="form-control" id="tieusu" name="tieusu" rows="4">{{ nhacsi.tieusu or '' }}</textarea>
+                        </div>
+                        
+                        <!-- Nút submit -->
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="/nhacsi/{{ nhacsi.idnhacsi }}" class="btn btn-secondary me-md-2">
+                                <i class="bi bi-x-circle"></i> Hủy bỏ
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save"></i> Lưu thay đổi
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Định dạng ngày sinh nếu có
+document.addEventListener('DOMContentLoaded', function() {
+    const ngaysinhInput = document.getElementById('ngaysinh');
+    if (ngaysinhInput.value) {
+        ngaysinhInput.valueAsDate = new Date(ngaysinhInput.value);
+    }
+    
+    // Validate kích thước ảnh
+    document.querySelector('form').addEventListener('submit', function(e) {
+        const fileInput = document.getElementById('avatar');
+        if (fileInput.files[0] && fileInput.files[0].size > 5 * 1024 * 1024) {
+            e.preventDefault();
+            alert('Ảnh tải lên không được vượt quá 5MB');
+        }
+    });
+});
+</script>
+{% endblock %}

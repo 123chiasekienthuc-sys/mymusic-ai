@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Trang chủ</a></li>
+            <li class="breadcrumb-item"><a href="/casi">Ca Sĩ</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ casi.tencasi }}</li>
+        </ol>
+    </nav>
+
+    <!-- Thông tin ca sĩ -->
+    <div class="row mb-4">
+        <div class="col-md-4 text-center">
+            <img src="{{ casi.anhdaidien or url_for('static', filename='images/default-avatar.jpg') }}" 
+                 class="img-thumbnail rounded-circle mb-3" 
+                 style="width: 200px; height: 200px; object-fit: cover;">
+            <h2>{{ casi.tencasi }}</h2>
+            <p class="text-muted">
+                {% if casi.ngaysinh %}
+                Sinh ngày: {{ casi.ngaysinh.strftime('%d/%m/%Y') }}
+                {% else %}
+                Chưa cập nhật ngày sinh
+                {% endif %}
+            </p>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">Sự nghiệp nghệ sĩ</h4>
+                </div>
+                <div class="card-body">
+                    {% if casi.sunghiep %}
+                    <div class="text-justify">{{ casi.sunghiep }}</div>
+                    {% else %}
+                    <p class="text-muted">Chưa cập nhật sự nghiệp</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Danh sách bản thu âm -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-success text-white">
+            <h4 class="mb-0">Các bản thu âm</h4>
+        </div>
+        <div class="card-body">
+            {% if banthuam %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>STT</th>
+                            <th>Tên bài hát</th>
+                            <th>Nhạc sĩ</th>
+                            <th>Ngày thu âm</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ban in banthuam %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                <a href="/bannhac/{{ ban.idbannhac }}" class="text-decoration-none">
+                                    {{ ban.tenbannhac }}
+                                </a>
+                            </td>
+                            <td>
+                                <a href="/nhacsi/{{ ban.idnhacsi }}" class="text-decoration-none">
+                                    {{ ban.tennhacsi }}
+                                </a>
+                            </td>
+                            <td>{{ ban.ngay_them }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">Chưa có bản thu âm nào</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

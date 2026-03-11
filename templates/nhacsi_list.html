@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Trang chủ</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Danh sách nhạc sĩ</li>
+        </ol>
+    </nav>
+
+    <!-- Tiêu đề và nút thêm mới -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">Danh Sách Nhạc Sĩ</h1>
+        <a href="/nhacsi/add" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>Thêm nhạc sĩ
+        </a>
+    </div>
+
+    <!-- Thanh tìm kiếm và bộ lọc -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="input-group">
+                        <input type="text" id="searchInput" class="form-control" placeholder="Tìm kiếm nhạc sĩ...">
+                        <button class="btn btn-outline-secondary" type="button" id="searchBtn">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <select class="form-select" id="sortSelect">
+                        <option value="name_asc">Sắp xếp: A-Z</option>
+                        <option value="name_desc">Sắp xếp: Z-A</option>
+                        <option value="date_desc">Mới nhất</option>
+                        <option value="date_asc">Cũ nhất</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Danh sách nhạc sĩ -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="50">STT</th>
+                            <th>Tên nhạc sĩ</th>
+                            <th>Ngày sinh</th>
+                            <th>Ngày thêm</th>
+                            <th>Số bài hát</th>
+                            <th width="120">Hành động</th>
+                        </tr>
+                    </thead>
+                    <tbody id="nhacsiTableBody">
+                        {% for nhacsi in nhacsi_list %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                <a href="/nhacsi/{{ nhacsi.idnhacsi }}" class="text-decoration-none">
+                                    <strong>{{ nhacsi.tennhacsi }}</strong>
+                                </a>
+                            </td>
+                            <td>{{ nhacsi.ngaysinh.strftime('%d/%m/%Y') if nhacsi.ngaysinh else 'N/A' }}</td>
+                            <td>{{ nhacsi.created_at.strftime('%d/%m/%Y') }}</td>
+                            <td>
+                                {% if nhacsi.so_baihat %}
+                                <span class="badge bg-primary rounded-pill">{{ nhacsi.so_baihat }}</span>
+                                {% else %}
+                                <span class="badge bg-secondary rounded-pill">0</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="d-flex">
+                                    <a href="/nhacsi/edit/{{ nhacsi.idnhacsi }}" 
+                                       class="btn btn-sm btn-outline-primary me-1" 
+                                       title="Sửa">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-danger" 
+                                            title="Xóa"
+                                            onclick="confirmDelete({{ nhacsi.idnhacsi }}, '{{ nhacsi.tennhacsi }}')">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phân trang -->
+    <nav aria-label="Page navigation" class="mt-4">
+        <ul class="pagination justify-content-center">
+            <li class="page-item disabled">
+                <a class="page-link" href="#" tabindex="-1">Previous</a>
+            </li>
+            <li class="page-item active"><a class="page-link" href="#">1</a></li>
+            <li class="page-item"><a class="page-link" href="#">2</a></li>
+            <li class="page-item"><a class="page-link" href="#">3</a></li>
+            <li class="page-item">
+                <a class="page-link" href="#">Next</a>
+            </li>
+        </ul>
+    </nav>
+</div>
+
+<!-- Modal xác nhận xóa -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Xác nhận xóa</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bạn có chắc chắn muốn xóa nhạc sĩ <strong id="nhacsiNameToDelete"></strong>?</p>
+                <p class="text-danger">Tất cả bài hát liên quan cũng sẽ bị xóa!</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Xóa</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Xác nhận xóa nhạc sĩ
+function confirmDelete(id, name) {
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    document.getElementById('nhacsiNameToDelete').textContent = name;
+    
+    document.getElementById('confirmDeleteBtn').onclick = function() {
+        deleteNhacsi(id);
+        modal.hide();
+    };
+    
+    modal.show();
+}
+
+// Gọi API xóa nhạc sĩ
+function deleteNhacsi(id) {
+    fetch(`/api/nhacsi/${id}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Xóa thất bại: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Đã xảy ra lỗi khi xóa nhạc sĩ');
+    });
+}
+
+// Tìm kiếm nhạc sĩ
+document.getElementById('searchBtn').addEventListener('click', function() {
+    const keyword = document.getElementById('searchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('#nhacsiTableBody tr');
+    
+    rows.forEach(row => {
+        const name = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+        row.style.display = name.includes(keyword) ? '' : 'none';
+    });
+});
+
+// Sắp xếp danh sách
+document.getElementById('sortSelect').addEventListener('change', function() {
+    const sortBy = this.value;
+    const rows = Array.from(document.querySelectorAll('#nhacsiTableBody tr'));
+    
+    rows.sort((a, b) => {
+        switch(sortBy) {
+            case 'name_asc':
+                return a.querySelector('td:nth-child(2)').textContent.localeCompare(
+                    b.querySelector('td:nth-child(2)').textContent);
+            case 'name_desc':
+                return b.querySelector('td:nth-child(2)').textContent.localeCompare(
+                    a.querySelector('td:nth-child(2)').textContent);
+            case 'date_asc':
+                return new Date(a.querySelector('td:nth-child(4)').textContent.split('/').reverse().join('-')) - 
+                       new Date(b.querySelector('td:nth-child(4)').textContent.split('/').reverse().join('-'));
+            case 'date_desc':
+                return new Date(b.querySelector('td:nth-child(4)').textContent.split('/').reverse().join('-')) - 
+                       new Date(a.querySelector('td:nth-child(4)').textContent.split('/').reverse().join('-'));
+            default:
+                return 0;
+        }
+    });
+    
+    const tbody = document.getElementById('nhacsiTableBody');
+    tbody.innerHTML = '';
+    rows.forEach((row, index) => {
+        row.querySelector('td:first-child').textContent = index + 1;
+        tbody.appendChild(row);
+    });
+});
+</script>
+
+<style>
+/* Custom CSS cho trang danh sách */
+.table-hover tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+}
+
+.btn-action {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .d-flex.justify-content-between {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.9rem;
+    }
+    
+    .btn-action {
+        width: 28px;
+        height: 28px;
+    }
+}
+</style>
+{% endblock %}

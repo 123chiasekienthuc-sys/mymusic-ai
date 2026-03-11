@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Trang chủ</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Danh sách ca sĩ</li>
+        </ol>
+    </nav>
+
+    <!-- Tiêu đề và công cụ -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">
+            <i class="fas fa-microphone-alt me-2"></i>Danh Sách Ca Sĩ
+        </h1>
+        <div>
+            <a href="/casi/add" class="btn btn-success">
+                <i class="fas fa-plus me-1"></i>Thêm mới
+            </a>
+        </div>
+    </div>
+
+    <!-- Thanh tìm kiếm và bộ lọc -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8 mb-3 mb-md-0">
+                    <div class="input-group">
+                        <input type="text" id="searchInput" class="form-control" placeholder="Tìm kiếm ca sĩ...">
+                        <button class="btn btn-outline-secondary" type="button" id="searchBtn">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <select class="form-select" id="filterSelect">
+                        <option value="all">Tất cả ca sĩ</option>
+                        <option value="has_records">Có bản thu âm</option>
+                        <option value="newest">Mới nhất</option>
+                        <option value="oldest">Cũ nhất</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Danh sách ca sĩ -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="50">STT</th>
+                            <th>Ca sĩ</th>
+                            <th>Ngày sinh</th>
+                            <th>Số bản thu âm</th>
+                            <th>Ngày thêm</th>
+                            <th width="120">Hành động</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for casi in casi_list %}
+                        <tr>
+                            <td>{{ loop.index + (page - 1) * per_page }}</td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <img src="{{ casi.anhdaidien or url_for('static', filename='images/default-avatar.jpg') }}" 
+                                         class="rounded-circle me-3" 
+                                         width="40" 
+                                         height="40" 
+                                         style="object-fit: cover;">
+                                    <a href="/casi/{{ casi.idcasi }}" class="text-decoration-none">
+                                        <strong>{{ casi.tencasi }}</strong>
+                                    </a>
+                                </div>
+                            </td>
+                            <td>{{ casi.ngaysinh.strftime('%d/%m/%Y') if casi.ngaysinh else 'N/A' }}</td>
+                            <td>
+                                <span class="badge bg-success rounded-pill">
+                                    {{ casi.soluong_banthuam or 0 }}
+                                </span>
+                            </td>
+                            <td>{{ casi.ngay_them.strftime('%d/%m/%Y') }}</td>
+                            <td>
+                                <div class="d-flex">
+                                    <a href="/casi/edit/{{ casi.idcasi }}" 
+                                       class="btn btn-sm btn-outline-primary me-1" 
+                                       title="Sửa">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-danger" 
+                                            title="Xóa"
+                                            onclick="confirmDelete({{ casi.idcasi }}, '{{ casi.tencasi }}')">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phân trang -->
+    <nav aria-label="Page navigation" class="mt-4">
+        <ul class="pagination justify-content-center">
+            {% if page > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="/casi?page={{ page - 1 }}">Trước</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <a class="page-link" href="#" tabindex="-1">Trước</a>
+            </li>
+            {% endif %}
+
+            {% for p in range(1, total_pages + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="/casi?page={{ p }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if page < total_pages %}
+            <li class="page-item">
+                <a class="page-link" href="/casi?page={{ page + 1 }}">Sau</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <a class="page-link" href="#">Sau</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+
+<!-- Modal xác nhận xóa -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Xác nhận xóa</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bạn có chắc chắn muốn xóa ca sĩ <strong id="casiNameToDelete"></strong>?</p>
+                <p class="text-danger">Tất cả bản thu âm liên quan cũng sẽ bị xóa!</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Xóa</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Xác nhận xóa ca sĩ
+function confirmDelete(id, name) {
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    document.getElementById('casiNameToDelete').textContent = name;
+    
+    document.getElementById('confirmDeleteBtn').onclick = function() {
+        deleteCasi(id);
+        modal.hide();
+    };
+    
+    modal.show();
+}
+
+// Gọi API xóa ca sĩ
+function deleteCasi(id) {
+    fetch(`/api/casi/${id}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Xóa thất bại: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Đã xảy ra lỗi khi xóa ca sĩ');
+    });
+}
+
+// Tìm kiếm ca sĩ
+document.getElementById('searchBtn').addEventListener('click', function() {
+    const keyword = document.getElementById('searchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('tbody tr');
+    
+    rows.forEach(row => {
+        const name = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+        row.style.display = name.includes(keyword) ? '' : 'none';
+    });
+});
+
+// Lọc ca sĩ
+document.getElementById('filterSelect').addEventListener('change', function() {
+    const filterBy = this.value;
+    window.location.href = `/casi?filter=${filterBy}`;
+});
+</script>
+
+<style>
+/* Custom CSS */
+.table-hover tbody tr:hover {
+    background-color: rgba(25, 135, 84, 0.05);
+}
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+}
+
+.btn-action {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.page-item.active .page-link {
+    background-color: #198754;
+    border-color: #198754;
+}
+
+.page-link {
+    color: #198754;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .d-flex.justify-content-between {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.9rem;
+    }
+    
+    .btn-action {
+        width: 28px;
+        height: 28px;
+    }
+}
+</style>
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Quản Lý Nhạc Sĩ</h1>
+
+<button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addNhacSiModal">
+    Thêm Nhạc Sĩ
+</button>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Tên Nhạc Sĩ</th>
+            <th>Ngày Sinh</th>
+            <th>Hành Động</th>
+        </tr>
+    </thead>
+    <tbody id="nhacsiTableBody">
+        <!-- Dữ liệu sẽ được thêm bằng JavaScript -->
+    </tbody>
+</table>
+
+<!-- Modal Thêm Nhạc Sĩ -->
+<div class="modal fade" id="addNhacSiModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Thêm Nhạc Sĩ Mới</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addNhacSiForm">
+                    <div class="mb-3">
+                        <label class="form-label">Tên Nhạc Sĩ</label>
+                        <input type="text" class="form-control" name="tennhacsi" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ngày Sinh</label>
+                        <input type="date" class="form-control" name="ngaysinh">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Sự nghiệp</label>
+                        <textarea class="form-control" name="tieusu" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" onclick="addNhacSi()">Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Load danh sách nhạc sĩ khi trang được tải
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/nhacsi')
+        .then(response => response.json())
+        .then(data => {
+            const tableBody = document.getElementById('nhacsiTableBody');
+            tableBody.innerHTML = '';
+            
+            data.forEach(nhacsi => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${nhacsi.idnhacsi}</td>
+                    <td>${nhacsi.tennhacsi}</td>
+                    <td>${nhacsi.ngaysinh || 'N/A'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-info">Sửa</button>
+                        <button class="btn btn-sm btn-danger">Xóa</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        });
+});
+
+// Thêm nhạc sĩ mới
+function addNhacSi() {
+    const form = document.getElementById('addNhacSiForm');
+    const formData = {
+        tennhacsi: form.tennhacsi.value,
+        ngaysinh: form.ngaysinh.value,
+        tieusu: form.tieusu.value
+    };
+    
+    fetch('/api/nhacsi', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0"><i class="fas fa-plus-circle"></i> Thêm bài hát mới</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/bannhac/add">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <!-- Tên bài hát -->
+                        <div class="mb-3">
+                            <label for="tenbannhac" class="form-label">
+                                Tên bài hát <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="tenbannhac" 
+                                   name="tenbannhac" 
+                                   required
+                                   maxlength="100"
+                                   placeholder="Nhập tên bài hát">
+                        </div>
+                        
+                        <!-- Thể loại -->
+                        <div class="mb-3">
+                            <label for="theloai" class="form-label">Thể loại</label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="theloai" 
+                                   name="theloai" 
+                                   maxlength="50"
+                                   placeholder="VD: Nhạc trữ tình, Rock, Pop...">
+                        </div>
+                        
+                        <!-- Nhạc sĩ -->
+                        <div class="mb-3">
+                            <label for="idnhacsi" class="form-label">
+                                Nhạc sĩ <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="idnhacsi" name="idnhacsi" required>
+                                <option value="">-- Chọn nhạc sĩ --</option>
+                                {% for ns in nhacsi_list %}
+                                <option value="{{ ns.idnhacsi }}">{{ ns.tennhacsi }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- Nút submit -->
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="/bannhac" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Quay lại
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> Thêm mới
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Xác nhận khi rời trang nếu có dữ liệu nhập
+let formChanged = false;
+
+document.querySelectorAll('form input, form select').forEach(element => {
+    element.addEventListener('change', () => formChanged = true);
+    element.addEventListener('keyup', () => formChanged = true);
+});
+
+window.addEventListener('beforeunload', function(e) {
+    if (formChanged) {
+        e.preventDefault();
+        e.returnValue = 'Bạn có dữ liệu chưa lưu. Bạn có chắc muốn rời khỏi trang?';
+    }
+});
+
+// Tắt cảnh báo khi submit form
+document.querySelector('form').addEventListener('submit', function() {
+    formChanged = false;
+});
+</script>
+
+<style>
+.card-header {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    border-bottom: none;
+    padding: 1.2rem 1.5rem;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #28a745;
+    box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .d-flex.justify-content-between {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .btn {
+        width: 100%;
+    }
+}
+</style>
+{% endblock %}

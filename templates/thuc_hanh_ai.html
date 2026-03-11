@@ -1,0 +1,763 @@
+<!-- templates/thuc_hanh_ai.html -->
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trợ lý SQL AI - Học SQL thông minh</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #4361ee;
+            --success-color: #06d6a0;
+            --warning-color: #ffb703;
+            --danger-color: #ef476f;
+            --dark-color: #2b2d42;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin: 30px auto;
+            padding: 30px;
+        }
+        
+        .code-editor {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 10px;
+            padding: 15px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            min-height: 200px;
+            width: 100%;
+            border: none;
+            resize: vertical;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .code-editor:focus {
+            outline: 2px solid var(--primary-color);
+        }
+        
+        .exercise-card {
+            background: #f8f9fa;
+            border-left: 4px solid var(--primary-color);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .exercise-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .exercise-card h6 {
+            margin-bottom: 5px;
+            font-size: 0.95rem;
+        }
+        
+        .exercise-card small {
+            font-size: 0.8rem;
+        }
+        
+        .exercise-group {
+            font-weight: bold;
+            margin-top: 15px;
+            margin-bottom: 10px;
+            padding-left: 5px;
+        }
+        
+        .result-card {
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .result-perfect {
+            background: linear-gradient(135deg, #06d6a0 0%, #05b588 100%);
+            color: white;
+        }
+        
+        .result-good {
+            background: linear-gradient(135deg, #ffb703 0%, #faa307 100%);
+            color: white;
+        }
+        
+        .result-incorrect {
+            background: linear-gradient(135deg, #ef476f 0%, #d64161 100%);
+            color: white;
+        }
+        
+        .table-result {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .table-result th {
+            background: var(--primary-color);
+            color: white;
+            font-weight: 500;
+        }
+        
+        .ai-badge {
+            background: linear-gradient(135deg, #4361ee, #7209b7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        
+        .btn-ai {
+            background: linear-gradient(135deg, #4361ee, #3a0ca3);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 50px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .btn-ai:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(67, 97, 238, 0.4);
+            color: white;
+        }
+        
+        .score-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: bold;
+            margin: 0 auto 15px;
+            background: white;
+            color: var(--primary-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .typing-indicator {
+            display: none;
+            align-items: center;
+            margin: 10px 0;
+        }
+        
+        .typing-indicator span {
+            height: 10px;
+            width: 10px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 2px;
+            animation: typing 1.4s infinite ease-in-out both;
+        }
+        
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0s; }
+        
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.6; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+        
+        .badge-custom {
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 20px;
+            margin-left: 5px;
+        }
+        
+        .exercise-basic {
+            border-left-color: #4361ee !important;
+        }
+        
+        .exercise-insert {
+            border-left-color: #198754 !important;
+        }
+        
+        .exercise-update {
+            border-left-color: #ffc107 !important;
+        }
+        
+        .exercise-delete {
+            border-left-color: #dc3545 !important;
+        }
+        
+        .exercise-join {
+            border-left-color: #fd7e14 !important;
+        }
+        
+        .exercise-error {
+            border-left-color: #6f42c1 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="glass-card">
+            <!-- Header -->
+            <div class="text-center mb-4">
+                <h1 class="display-4 fw-bold text-primary">
+                    <i class="fas fa-robot me-3"></i>Trợ lý SQL AI
+                </h1>
+                <p class="lead text-secondary">
+                    Học SQL thông minh với trí tuệ nhân tạo Gemini
+                </p>
+                <div class="ai-badge">
+                    <i class="fas fa-brain me-2"></i>Powered by Google Gemini AI
+                </div>
+            </div>
+            
+            <div class="row">
+                <!-- Danh sách bài tập mở rộng -->
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Bài tập SQL (20 bài)</h5>
+                        </div>
+                        <div class="card-body" style="max-height: 600px; overflow-y: auto; padding: 10px;">
+                            
+                            <!-- Nhóm 1: Cơ bản -->
+                            <div class="exercise-group text-primary">📘 CƠ BẢN (5 bài)</div>
+                            <div class="exercise-card exercise-basic" onclick="loadExercise('1')">
+                                <h6>📝 Bài 1: Liệt kê nhạc sĩ</h6>
+                                <small class="text-muted">Lấy danh sách tất cả nhạc sĩ</small>
+                            </div>
+                            <div class="exercise-card exercise-basic" onclick="loadExercise('2')">
+                                <h6>🔍 Bài 2: Tìm ca sĩ theo tên</h6>
+                                <small class="text-muted">Tìm ca sĩ có tên chứa "Trịnh"</small>
+                            </div>
+                            <div class="exercise-card exercise-basic" onclick="loadExercise('3')">
+                                <h6>📊 Bài 3: Thống kê thể loại</h6>
+                                <small class="text-muted">Đếm số lượng bản nhạc theo thể loại</small>
+                            </div>
+                            <div class="exercise-card exercise-basic" onclick="loadExercise('4')">
+                                <h6>🎵 Bài 4: Bài hát của Văn Cao</h6>
+                                <small class="text-muted">Liệt kê bài hát do Văn Cao sáng tác</small>
+                            </div>
+                            <div class="exercise-card exercise-basic" onclick="loadExercise('5')">
+                                <h6>🏆 Bài 5: Ca sĩ nổi bật</h6>
+                                <small class="text-muted">Tìm ca sĩ có nhiều bản thu nhất</small>
+                            </div>
+                            
+                            <!-- Nhóm 2: Thêm/Sửa/Xóa -->
+                            <div class="exercise-group text-success mt-3">📝 THÊM - SỬA - XÓA (6 bài)</div>
+                            <div class="exercise-card exercise-insert" onclick="loadExercise('6')">
+                                <h6>➕ Bài 6: Thêm ca sĩ mới</h6>
+                                <small class="text-muted">Thêm "Đen Vâu" vào bảng casi</small>
+                            </div>
+                            <div class="exercise-card exercise-insert" onclick="loadExercise('7')">
+                                <h6>➕ Bài 7: Thêm nhạc sĩ mới</h6>
+                                <small class="text-muted">Thêm "Hà Anh Tuấn" vào bảng nhacsi</small>
+                            </div>
+                            <div class="exercise-card exercise-insert" onclick="loadExercise('8')">
+                                <h6>➕ Bài 8: Thêm bản nhạc mới</h6>
+                                <small class="text-muted">Thêm "Đi về nhà" do Hà Anh Tuấn sáng tác</small>
+                            </div>
+                            <div class="exercise-card exercise-insert" onclick="loadExercise('9')">
+                                <h6>➕ Bài 9: Thêm bản thu âm</h6>
+                                <small class="text-muted">Thêm bản thu của "Đen Vâu" cho "Đi về nhà"</small>
+                            </div>
+                            <div class="exercise-card exercise-update" onclick="loadExercise('10')">
+                                <h6>✏️ Bài 10: Cập nhật thông tin</h6>
+                                <small class="text-muted">Đổi tên "Trịnh Công Sơn" thành "Trịnh Sơn"</small>
+                            </div>
+                            <div class="exercise-card exercise-delete" onclick="loadExercise('11')">
+                                <h6>🗑️ Bài 11: Xóa dữ liệu</h6>
+                                <small class="text-muted">Xóa ca sĩ "Mỹ Tâm" khỏi hệ thống</small>
+                            </div>
+                            
+                            <!-- Nhóm 3: Truy vấn nâng cao -->
+                            <div class="exercise-group text-warning mt-3">🔗 TRUY VẤN NÂNG CAO (5 bài)</div>
+                            <div class="exercise-card exercise-join" onclick="loadExercise('12')">
+                                <h6>🔗 Bài 12: Liệt kê bản nhạc kèm nhạc sĩ</h6>
+                                <small class="text-muted">Hiển thị tên bản nhạc và tên nhạc sĩ</small>
+                            </div>
+                            <div class="exercise-card exercise-join" onclick="loadExercise('13')">
+                                <h6>🎤 Bài 13: Bản thu âm của một ca sĩ</h6>
+                                <small class="text-muted">Tìm bài hát do "Sơn Tùng M-TP" thu âm</small>
+                            </div>
+                            <div class="exercise-card exercise-join" onclick="loadExercise('14')">
+                                <h6>📈 Bài 14: Đếm bản thu theo ca sĩ</h6>
+                                <small class="text-muted">Thống kê số lượng bản thu của mỗi ca sĩ</small>
+                            </div>
+                            <div class="exercise-card exercise-join" onclick="loadExercise('15')">
+                                <h6>🏆 Bài 15: Nhạc sĩ có nhiều bài nhất</h6>
+                                <small class="text-muted">Tìm nhạc sĩ có nhiều sáng tác nhất</small>
+                            </div>
+                            <div class="exercise-card exercise-join" onclick="loadExercise('16')">
+                                <h6>🎼 Bài 16: Ca sĩ thu âm của nhạc sĩ</h6>
+                                <small class="text-muted">Ca sĩ đã thu âm bài của "Hà Anh Tuấn"</small>
+                            </div>
+                            
+                            <!-- Nhóm 4: Phát hiện lỗi -->
+                            <div class="exercise-group text-danger mt-3">⚠️ PHÁT HIỆN LỖI (4 bài)</div>
+                            <div class="exercise-card exercise-error" onclick="loadExercise('17')">
+                                <h6>🔁 Bài 17: Lỗi trùng lặp dữ liệu</h6>
+                                <small class="text-muted">Tìm ca sĩ trùng tên nhưng khác ID</small>
+                            </div>
+                            <div class="exercise-card exercise-error" onclick="loadExercise('18')">
+                                <h6>📅 Bài 18: Lỗi ngày sinh</h6>
+                                <small class="text-muted">Tìm ngày sinh không hợp lệ</small>
+                            </div>
+                            <div class="exercise-card exercise-error" onclick="loadExercise('19')">
+                                <h6>❓ Bài 19: Bản nhạc thiếu nhạc sĩ</h6>
+                                <small class="text-muted">Tìm bản nhạc không có idnhacsi</small>
+                            </div>
+                            <div class="exercise-card exercise-error" onclick="loadExercise('20')">
+                                <h6>🔗 Bài 20: Khóa ngoại không hợp lệ</h6>
+                                <small class="text-muted">Tìm bản thu âm có id ca sĩ không tồn tại</small>
+                            </div>
+                            
+                            <hr>
+                            <button class="btn btn-outline-primary w-100" onclick="generateNewExercise()">
+                                <i class="fas fa-magic me-2"></i>Tạo bài tập mới với AI
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Khu vực làm bài -->
+                <div class="col-md-8">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-pen me-2"></i><span id="exerciseTitle">Bài tập SQL</span></h5>
+                            <span class="badge bg-light text-primary" id="exerciseId">#1</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted" id="exerciseDescription">
+                                Chọn một bài tập từ danh sách bên trái
+                            </p>
+                            
+                            <form id="sqlForm">
+                                <div class="mb-3">
+                                    <label class="fw-bold mb-2">
+                                        <i class="fas fa-code me-2 text-primary"></i>Nhập câu lệnh SQL:
+                                    </label>
+                                    <textarea class="code-editor" id="sqlQuery" placeholder="SELECT * FROM nhacsi" rows="6">SELECT * FROM nhacsi</textarea>
+                                </div>
+                                
+                                <div class="d-flex gap-2 mb-3">
+                                    <button type="button" class="btn btn-ai flex-grow-1" onclick="evaluateSQL()">
+                                        <i class="fas fa-check-circle me-2"></i>Chấm điểm
+                                    </button>
+                                    <button type="button" class="btn btn-success" onclick="executeSQL()">
+                                        <i class="fas fa-play me-2"></i>Chạy thử
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="showHint()">
+                                        <i class="fas fa-lightbulb me-2"></i>Gợi ý
+                                    </button>
+                                </div>
+                            </form>
+                            
+                            <!-- Typing indicator -->
+                            <div class="typing-indicator" id="typingIndicator">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span class="ms-2 text-muted">AI đang phân tích...</span>
+                            </div>
+                            
+                            <!-- Kết quả chấm điểm -->
+                            <div class="result-card" id="resultCard" style="display: none;">
+                                <div class="row align-items-center">
+                                    <div class="col-md-3 text-center">
+                                        <div class="score-circle" id="scoreCircle">0</div>
+                                    </div>
+                                    <div class="col-md-9">
+                                        <h5 id="resultMessage"></h5>
+                                        <p id="resultFeedback" class="mb-0"></p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Câu SQL mẫu -->
+                            <div class="mt-3" id="solutionCard" style="display: none;">
+                                <div class="alert alert-info">
+                                    <h6><i class="fas fa-lightbulb me-2"></i>Câu SQL mẫu:</h6>
+                                    <pre class="mb-0" id="solutionSQL" style="background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 5px;"></pre>
+                                </div>
+                            </div>
+                            
+                            <!-- Kết quả thực thi -->
+                            <div class="mt-4" id="executionResult" style="display: none;">
+                                <h6 class="fw-bold"><i class="fas fa-table me-2"></i>Kết quả truy vấn:</h6>
+                                <div class="table-result" id="resultTable"></div>
+                                <p class="text-muted mt-2" id="rowCount"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tips -->
+            <div class="row mt-4">
+                <div class="col-md-12">
+                    <div class="alert alert-warning">
+                        <h6><i class="fas fa-info-circle me-2"></i>Mẹo học tập:</h6>
+                        <ul class="mb-0 small">
+                            <li>Bắt đầu với các câu lệnh SELECT đơn giản</li>
+                            <li>Sử dụng dấu * để lấy tất cả các cột hoặc chỉ định cụ thể tên cột</li>
+                            <li>WHERE để lọc dữ liệu, LIKE để tìm kiếm theo mẫu</li>
+                            <li>JOIN để kết hợp dữ liệu từ nhiều bảng</li>
+                            <li>GROUP BY để nhóm và COUNT để đếm</li>
+                            <li>Khi thêm dữ liệu, chú ý khóa chính không được trùng</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Biến toàn cục
+        let currentExercise = '1';
+        
+        // Dữ liệu bài tập mở rộng từ phụ lục
+        const exercises = {
+            // Bài tập cơ bản
+            '1': {
+                title: 'Bài 1: Liệt kê tất cả nhạc sĩ',
+                description: 'Viết câu lệnh SQL để lấy danh sách tất cả nhạc sĩ trong database',
+                hint: 'Sử dụng SELECT * FROM [tên_bảng]',
+                solution: 'SELECT * FROM nhacsi'
+            },
+            '2': {
+                title: 'Bài 2: Tìm ca sĩ theo tên',
+                description: 'Tìm ca sĩ có tên chứa "Trịnh" (sử dụng LIKE với ký tự đại diện %)',
+                hint: "SELECT * FROM casi WHERE tencasi LIKE '%Trịnh%'",
+                solution: "SELECT * FROM casi WHERE tencasi LIKE '%Trịnh%'"
+            },
+            '3': {
+                title: 'Bài 3: Đếm số lượng bản nhạc theo thể loại',
+                description: 'Đếm số lượng bản nhạc của mỗi thể loại',
+                hint: 'SELECT theloai, COUNT(*) as soluong FROM bannhac GROUP BY theloai',
+                solution: 'SELECT theloai, COUNT(*) as soluong FROM bannhac GROUP BY theloai'
+            },
+            '4': {
+                title: 'Bài 4: Tìm bài hát của nhạc sĩ Văn Cao',
+                description: 'Liệt kê các bài hát do nhạc sĩ Văn Cao sáng tác (cần JOIN hai bảng)',
+                hint: 'JOIN bannhac với nhacsi và WHERE tennhacsi = "Văn Cao"',
+                solution: 'SELECT bn.* FROM bannhac bn JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi WHERE ns.tennhacsi = "Văn Cao"'
+            },
+            '5': {
+                title: 'Bài 5: Ca sĩ có nhiều bản thu nhất',
+                description: 'Tìm ca sĩ có nhiều bản thu âm nhất',
+                hint: 'Dùng GROUP BY, COUNT, ORDER BY và LIMIT',
+                solution: 'SELECT c.tencasi, COUNT(bt.idbanthuam) as soluong FROM casi c LEFT JOIN banthuam bt ON c.idcasi = bt.idcasi GROUP BY c.idcasi ORDER BY soluong DESC LIMIT 1'
+            },
+            
+            // Bài tập thêm/sửa/xóa
+            '6': {
+                title: 'Bài 6: Thêm ca sĩ mới',
+                description: 'Thêm ca sĩ "Đen Vâu" vào bảng casi (id = 10, ngày sinh: 1989-05-13)',
+                hint: 'INSERT INTO casi (idcasi, tencasi, ngaysinh) VALUES (...)',
+                solution: "INSERT INTO casi (idcasi, tencasi, ngaysinh) VALUES (10, 'Đen Vâu', '1989-05-13')"
+            },
+            '7': {
+                title: 'Bài 7: Thêm nhạc sĩ mới',
+                description: 'Thêm nhạc sĩ "Hà Anh Tuấn" vào bảng nhacsi (id = 11, ngày sinh: 1984-12-17)',
+                hint: 'INSERT INTO nhacsi (idnhacsi, tennhacsi, ngaysinh) VALUES (...)',
+                solution: "INSERT INTO nhacsi (idnhacsi, tennhacsi, ngaysinh) VALUES (11, 'Hà Anh Tuấn', '1984-12-17')"
+            },
+            '8': {
+                title: 'Bài 8: Thêm bản nhạc mới',
+                description: 'Thêm bản nhạc "Đi về nhà" vào bảng bannhac, do nhạc sĩ Hà Anh Tuấn sáng tác (idnhacsi = 11, idbannhac = 20)',
+                hint: 'INSERT INTO bannhac (idbannhac, tenbannhac, idnhacsi) VALUES (...)',
+                solution: "INSERT INTO bannhac (idbannhac, tenbannhac, idnhacsi) VALUES (20, 'Đi về nhà', 11)"
+            },
+            '9': {
+                title: 'Bài 9: Thêm bản thu âm',
+                description: 'Thêm bản thu âm của ca sĩ "Đen Vâu" (idcasi = 10) cho bản nhạc "Đi về nhà" (idbannhac = 20) với id = 13',
+                hint: 'INSERT INTO banthuam (idbanthuam, idbannhac, idcasi) VALUES (...)',
+                solution: "INSERT INTO banthuam (idbanthuam, idbannhac, idcasi) VALUES (13, 20, 10)"
+            },
+            '10': {
+                title: 'Bài 10: Cập nhật thông tin',
+                description: 'Nhạc sĩ "Trịnh Công Sơn" đã đổi nghệ danh thành "Trịnh Sơn". Hãy cập nhật.',
+                hint: 'UPDATE nhacsi SET tennhacsi = ... WHERE tennhacsi = ...',
+                solution: "UPDATE nhacsi SET tennhacsi = 'Trịnh Sơn' WHERE tennhacsi = 'Trịnh Công Sơn'"
+            },
+            '11': {
+                title: 'Bài 11: Xóa dữ liệu',
+                description: 'Xóa ca sĩ "Mỹ Tâm" khỏi hệ thống (xóa cả bản thu âm liên quan)',
+                hint: 'DELETE FROM casi WHERE tencasi = ...',
+                solution: "DELETE FROM casi WHERE tencasi = 'Mỹ Tâm'"
+            },
+            
+            // Truy vấn nâng cao
+            '12': {
+                title: 'Bài 12: Liệt kê bản nhạc kèm nhạc sĩ',
+                description: 'Hiển thị danh sách bản nhạc cùng với tên nhạc sĩ sáng tác',
+                hint: 'SELECT bannhac.tenbannhac, nhacsi.tennhacsi FROM bannhac JOIN nhacsi ON ... ORDER BY ...',
+                solution: 'SELECT bannhac.tenbannhac, nhacsi.tennhacsi FROM bannhac JOIN nhacsi ON bannhac.idnhacsi = nhacsi.idnhacsi ORDER BY bannhac.tenbannhac ASC'
+            },
+            '13': {
+                title: 'Bài 13: Bản thu âm của một ca sĩ',
+                description: 'Tìm tất cả bản thu âm của ca sĩ "Sơn Tùng M-TP"',
+                hint: 'JOIN ba bảng banthuam, bannhac, casi',
+                solution: "SELECT banthuam.idbanthuam, casi.tencasi, bannhac.tenbannhac FROM banthuam JOIN casi ON banthuam.idcasi = casi.idcasi JOIN bannhac ON banthuam.idbannhac = bannhac.idbannhac WHERE casi.tencasi = 'Sơn Tùng M-TP'"
+            },
+            '14': {
+                title: 'Bài 14: Đếm bản thu theo ca sĩ',
+                description: 'Đếm số lượng bản thu âm của mỗi ca sĩ, sắp xếp giảm dần',
+                hint: 'GROUP BY và COUNT',
+                solution: 'SELECT casi.tencasi, COUNT(banthuam.idbanthuam) AS so_luong FROM casi LEFT JOIN banthuam ON casi.idcasi = banthuam.idcasi GROUP BY casi.tencasi ORDER BY so_luong DESC'
+            },
+            '15': {
+                title: 'Bài 15: Nhạc sĩ có nhiều bài nhất',
+                description: 'Tìm nhạc sĩ có nhiều bài hát sáng tác nhất',
+                hint: 'GROUP BY, ORDER BY, LIMIT',
+                solution: 'SELECT nhacsi.tennhacsi, COUNT(bannhac.idbannhac) AS so_luong FROM nhacsi LEFT JOIN bannhac ON nhacsi.idnhacsi = bannhac.idnhacsi GROUP BY nhacsi.tennhacsi ORDER BY so_luong DESC LIMIT 1'
+            },
+            '16': {
+                title: 'Bài 16: Ca sĩ thu âm của nhạc sĩ',
+                description: 'Liệt kê các ca sĩ đã thu âm bài hát của nhạc sĩ "Hà Anh Tuấn"',
+                hint: 'JOIN 4 bảng: nhacsi → bannhac → banthuam → casi',
+                solution: "SELECT DISTINCT casi.tencasi FROM casi JOIN banthuam ON casi.idcasi = banthuam.idcasi JOIN bannhac ON banthuam.idbannhac = bannhac.idbannhac JOIN nhacsi ON bannhac.idnhacsi = nhacsi.idnhacsi WHERE nhacsi.tennhacsi = 'Hà Anh Tuấn'"
+            },
+            
+            // Phát hiện lỗi
+            '17': {
+                title: 'Bài 17: Lỗi trùng lặp dữ liệu',
+                description: 'Tìm các ca sĩ có tên trùng nhau nhưng khác ID',
+                hint: 'GROUP BY và HAVING COUNT(*) > 1',
+                solution: 'SELECT tencasi, COUNT(*) AS so_luong FROM casi GROUP BY tencasi HAVING COUNT(*) > 1'
+            },
+            '18': {
+                title: 'Bài 18: Lỗi ngày sinh',
+                description: 'Tìm các ca sĩ có ngày sinh lớn hơn ngày hiện tại (không hợp lệ)',
+                hint: 'WHERE ngaysinh > CURDATE()',
+                solution: 'SELECT * FROM casi WHERE ngaysinh > CURDATE()'
+            },
+            '19': {
+                title: 'Bài 19: Bản nhạc thiếu nhạc sĩ',
+                description: 'Tìm các bản nhạc không có nhạc sĩ (idnhacsi = NULL)',
+                hint: 'WHERE idnhacsi IS NULL',
+                solution: 'SELECT * FROM bannhac WHERE idnhacsi IS NULL'
+            },
+            '20': {
+                title: 'Bài 20: Khóa ngoại không hợp lệ',
+                description: 'Tìm các bản thu âm có id ca sĩ không tồn tại trong bảng casi',
+                hint: 'LEFT JOIN và kiểm tra NULL',
+                solution: 'SELECT banthuam.* FROM banthuam LEFT JOIN casi ON banthuam.idcasi = casi.idcasi WHERE casi.idcasi IS NULL'
+            }
+        };
+        
+        // Hàm load bài tập
+        function loadExercise(id) {
+            console.log('Loading exercise:', id);
+            currentExercise = id;
+            
+            if (exercises[id]) {
+                document.getElementById('exerciseTitle').textContent = exercises[id].title;
+                document.getElementById('exerciseDescription').textContent = exercises[id].description;
+                document.getElementById('exerciseId').textContent = '#' + id;
+                document.getElementById('sqlQuery').value = exercises[id].solution;
+                
+                // Ẩn kết quả cũ
+                document.getElementById('resultCard').style.display = 'none';
+                document.getElementById('executionResult').style.display = 'none';
+                document.getElementById('solutionCard').style.display = 'none';
+                document.getElementById('typingIndicator').style.display = 'none';
+            } else {
+                alert('Không tìm thấy bài tập!');
+            }
+        }
+        
+        // Hàm đánh giá SQL
+        async function evaluateSQL() {
+            const sqlQuery = document.getElementById('sqlQuery').value;
+            
+            if (!sqlQuery.trim()) {
+                alert('Vui lòng nhập câu lệnh SQL!');
+                return;
+            }
+            
+            document.getElementById('typingIndicator').style.display = 'flex';
+            document.getElementById('resultCard').style.display = 'none';
+            
+            try {
+                const response = await fetch('/thuc-hanh-ai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sql_query: sqlQuery,
+                        exercise_id: currentExercise,
+                        action: 'evaluate'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById('typingIndicator').style.display = 'none';
+                
+                const resultCard = document.getElementById('resultCard');
+                resultCard.classList.remove('result-perfect', 'result-good', 'result-incorrect');
+                
+                if (data.status === 'perfect') {
+                    resultCard.classList.add('result-perfect');
+                } else if (data.status === 'good') {
+                    resultCard.classList.add('result-good');
+                } else {
+                    resultCard.classList.add('result-incorrect');
+                }
+                
+                document.getElementById('scoreCircle').textContent = data.score || 50;
+                document.getElementById('resultMessage').textContent = data.message || 'Đã đánh giá';
+                document.getElementById('resultFeedback').textContent = data.feedback || '';
+                resultCard.style.display = 'block';
+                
+                if (data.sql_chuan) {
+                    document.getElementById('solutionSQL').textContent = data.sql_chuan;
+                    document.getElementById('solutionCard').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('typingIndicator').style.display = 'none';
+                alert('Có lỗi xảy ra: ' + error.message);
+            }
+        }
+        
+        // Hàm thực thi SQL
+        async function executeSQL() {
+            const sqlQuery = document.getElementById('sqlQuery').value;
+            
+            if (!sqlQuery.trim()) {
+                alert('Vui lòng nhập câu lệnh SQL!');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/execute-sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sql: sqlQuery })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayResults(data.data, data.count);
+                } else {
+                    alert('Lỗi: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Có lỗi xảy ra khi thực thi SQL: ' + error.message);
+            }
+        }
+        
+        // Hàm hiển thị kết quả
+        function displayResults(data, count) {
+            const resultDiv = document.getElementById('executionResult');
+            const tableDiv = document.getElementById('resultTable');
+            
+            if (data.length === 0) {
+                tableDiv.innerHTML = '<div class="alert alert-info">Không có dữ liệu</div>';
+            } else {
+                let html = '<table class="table table-hover mb-0"><thead><tr>';
+                Object.keys(data[0]).forEach(key => {
+                    html += `<th>${key}</th>`;
+                });
+                html += '</tr></thead><tbody>';
+                
+                data.forEach(row => {
+                    html += '<tr>';
+                    Object.values(row).forEach(val => {
+                        html += `<td>${val || ''}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                
+                html += '</tbody></table>';
+                tableDiv.innerHTML = html;
+            }
+            
+            document.getElementById('rowCount').textContent = `Tổng số: ${count} dòng`;
+            resultDiv.style.display = 'block';
+        }
+        
+        // Hàm hiển thị gợi ý
+        function showHint() {
+            if (exercises[currentExercise]) {
+                alert('💡 Gợi ý:\n' + exercises[currentExercise].hint);
+            }
+        }
+        
+        // Hàm tạo bài tập mới
+        async function generateNewExercise() {
+            document.getElementById('typingIndicator').style.display = 'flex';
+            
+            try {
+                const response = await fetch('/api/generate-exercise', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: 'ngẫu nhiên' })
+                });
+                
+                if (!response.ok) throw new Error('Lỗi kết nối');
+                
+                const exercise = await response.json();
+                const newId = Date.now().toString();
+                
+                exercises[newId] = {
+                    title: exercise.title || 'Bài tập mới',
+                    description: exercise.description || 'Hãy viết câu lệnh SQL phù hợp',
+                    hint: exercise.hint || 'Xem lại cú pháp SQL',
+                    solution: exercise.solution || 'SELECT * FROM nhacsi'
+                };
+                
+                loadExercise(newId);
+                showNotification('✅ Đã tạo bài tập mới!', 'success');
+            } catch (error) {
+                console.error('Error:', error);
+                showNotification('❌ Lỗi: ' + error.message, 'danger');
+            } finally {
+                document.getElementById('typingIndicator').style.display = 'none';
+            }
+        }
+        
+        // Hàm hiển thị thông báo
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+            notification.style.zIndex = '9999';
+            notification.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+        }
+        
+        // Load bài tập đầu tiên
+        loadExercise('1');
+    </script>
+</body>
+</html>
+
+<!-- Thêm chat widget -->
+{% include 'ai_chat.html' %}
+</html>
