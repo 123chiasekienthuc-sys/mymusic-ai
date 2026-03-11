@@ -1,174 +1,176 @@
 # -*- coding: utf-8 -*-
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from flask_paginate import Pagination, get_page_args
-import mysql.connector
+"""
+MyMusic Flask Application
+Quản lý nhạc sĩ, ca sĩ, bản nhạc và bản thu âm
+"""
+
 import os
-from werkzeug.utils import secure_filename
-from datetime import datetime
-from flask_wtf.csrf import CSRFProtect
-
-from config import DB_CONFIG
 import sys
-from pathlib import Path
-
-import pymysql
-from pymysql.constants import CLIENT
-import getpass
-from dotenv import load_dotenv
-import json
-
 import time
-from functools import wraps
-from flask import make_response  # Thêm dòng này vào import flask hiện có
-import random
-from threading import Thread
-from queue import Queue
-import uuid
-
-# Thêm import mới ở đầu file
-from ai_assistant import sql_assistant
 import json
+import random
+import argparse
+import warnings
+from pathlib import Path
+from datetime import datetime
+from functools import wraps
 
-# --- CẤU HÌNH --- #
-load_dotenv()  # Load biến môi trường từ file .env
+from flask import (
+    Flask, render_template, request, redirect, 
+    url_for, flash, jsonify, make_response
+)
+from flask_paginate import Pagination, get_page_args
+from flask_wtf.csrf import CSRFProtect
+from werkzeug.utils import secure_filename
+import mysql.connector
+from mysql.connector import Error
+from dotenv import load_dotenv
 
-BACKUP_PATH = Path("data/mymusic.sql")  # Đường dẫn mặc định
-DEFAULT_PASSWORD = "123456"  # Password mặc định
+# Google AI
+from google import genai
+from google.genai import types
 
-# --- HÀM CHÍNH --- #
-import getpass
-from pymysql.constants import CLIENT
+# Import AI Assistant
+from ai_assistant import sql_assistant
 
-def get_db_config():
-    """Lấy thông tin kết nối database"""
+# Load environment variables
+load_dotenv()
 
-    print("\n🔧 NHẬP THÔNG TIN DATABASE (Enter để dùng Railway mặc định)")
+# ============================================
+# CONFIGURATION
+# ============================================
 
-    config = {
-        'host': input("MySQL Host [switchback.proxy.rlwy.net]: ").strip() or "switchback.proxy.rlwy.net",
-        'port': int(input("Port [53475]: ").strip() or 53475),
-        'user': input("Username [root]: ").strip() or "root",
-        'database': input("Database [railway]: ").strip() or "railway",
+class Config:
+    """Application configuration"""
+    # Base paths
+    BASE_PATH = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent.absolute()
+    STATIC_DIR = BASE_PATH / 'static'
+    TEMPLATE_DIR = BASE_PATH / 'templates'
+    DATA_DIR = BASE_PATH / 'data'
+    
+    # Flask
+    SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here-change-in-production')
+    
+    # Upload folders
+    SINGER_IMAGE_FOLDER = 'static/images/singers'
+    ARTIST_IMAGE_FOLDER = 'static/images/artists'
+    RECORDING_FOLDER = 'static/recordings'
+    
+    # File upload settings
+    ALLOWED_AUDIO = {'mp3', 'wav', 'aac', 'm4a'}
+    ALLOWED_IMAGES = {'png', 'jpg', 'jpeg', 'gif'}
+    MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 20MB
+    MAX_IMAGE_SIZE = 5 * 1024 * 1024   # 5MB
+    
+    # Database
+    DB_CONFIG = {
+        'host': os.getenv('DB_HOST', 'localhost'),
+        'port': int(os.getenv('DB_PORT', '3306')),
+        'user': os.getenv('DB_USER', 'root'),
+        'password': os.getenv('DB_PASSWORD', ''),
+        'database': os.getenv('DB_NAME', 'mymusic'),
         'charset': 'utf8mb4',
-        'client_flag': CLIENT.MULTI_STATEMENTS
+        'use_unicode': True,
+        'autocommit': False
     }
+    
+    # Google AI
+    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+    
+    # Rate limiting
+    RATE_LIMIT_REQUESTS = int(os.getenv('RATE_LIMIT_REQUESTS', '5'))
+    RATE_LIMIT_WINDOW = int(os.getenv('RATE_LIMIT_WINDOW', '60'))
 
-    password = getpass.getpass("Password (Railway MySQL): ").strip()
-    config['password'] = password
 
-    return config
+# ============================================
+# INITIALIZATION
+# ============================================
 
-import pymysql
-
-def restore_database(config, backup_file):
-    """Khôi phục database từ file SQL"""
-
-    conn = None
-
+# Create necessary directories
+for directory in [
+    Config.STATIC_DIR, Config.TEMPLATE_DIR, Config.DATA_DIR,
+    Path(Config.SINGER_IMAGE_FOLDER), Path(Config.ARTIST_IMAGE_FOLDER),
+    Path(Config.RECORDING_FOLDER)
+]:
     try:
-        print(f"\n🔗 Đang kết nối MySQL tại {config['host']}:{config['port']}...")
+        directory.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"Warning: Cannot create directory {directory}: {e}")
 
-        conn = pymysql.connect(
-            host=config['host'],
-            port=config['port'],
-            user=config['user'],
-            password=config['password'],
-            database=config['database'],
-            charset=config['charset'],
-            client_flag=config['client_flag'],
-            autocommit=True
-        )
+# Initialize Flask app
+app = Flask(
+    __name__,
+    template_folder=str(Config.TEMPLATE_DIR),
+    static_folder=str(Config.STATIC_DIR)
+)
+app.config['SECRET_KEY'] = Config.SECRET_KEY
+app.config['MAX_CONTENT_LENGTH'] = Config.MAX_AUDIO_SIZE
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
-        with conn.cursor() as cursor:
+# Initialize CSRF protection
+csrf = CSRFProtect(app)
 
-            # Kiểm tra phiên bản MySQL
-            cursor.execute("SELECT VERSION()")
-            print(f"⚙️ MySQL Version: {cursor.fetchone()[0]}")
-
-            print(f"\n📥 Đang import dữ liệu từ {backup_file}...")
-
-            # Tắt kiểm tra khóa ngoại
-            cursor.execute("SET FOREIGN_KEY_CHECKS=0")
-
-            sql_command = ""
-
-            with open(backup_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-
-                    # Bỏ qua comment
-                    if line.startswith("--") or line == "":
-                        continue
-
-                    sql_command += line + " "
-
-                    # Khi gặp dấu ; thì chạy câu SQL
-                    if line.endswith(";"):
-                        try:
-                            cursor.execute(sql_command)
-                        except Exception as e:
-                            print("⚠️ Lỗi SQL:", e)
-
-                        sql_command = ""
-
-            # Bật lại khóa ngoại
-            cursor.execute("SET FOREIGN_KEY_CHECKS=1")
-
-        print("\n✅ KHÔI PHỤC DATABASE THÀNH CÔNG!")
-        print("\n🔑 Thông tin kết nối:")
-        print(f"- Host: {config['host']}")
-        print(f"- Port: {config['port']}")
-        print(f"- Database: {config['database']}")
-        print(f"- Username: {config['user']}")
-
-    except pymysql.Error as e:
-        print(f"\n❌ LỖI MySQL ({e.args[0]}): {e.args[1]}")
-
-    except FileNotFoundError:
-        print(f"\n❌ KHÔNG TÌM THẤY FILE: {backup_file}")
-
-    except Exception as e:
-        print(f"\n❌ LỖI KHÔNG XÁC ĐỊNH: {str(e)}")
-
-    finally:
-        if conn:
-            conn.close()
-
-
-
-
-
-# 1. Xác định đường dẫn gốc
-if getattr(sys, 'frozen', False):
-    base_path = Path(sys.executable).parent  # Lấy thư mục chứa file .exe
+# Initialize Google AI client
+if Config.GEMINI_API_KEY:
+    ai_client = genai.Client(api_key=Config.GEMINI_API_KEY)
 else:
-    base_path = Path(__file__).parent.absolute()
+    ai_client = None
+    print("Warning: GEMINI_API_KEY not set. AI features will be disabled.")
 
-# 2. Định nghĩa đường dẫn các thư mục (Dùng viết thường cho 'static' và 'templates')
-static_dir = base_path / 'static'
-template_dir = base_path / 'templates'
-data_dir = base_path / 'data'
-
-# 3. Chỉ tạo thư mục nếu nó chưa tồn tại (Dùng try-except để tránh lỗi Access Denied trên Windows)
-#for dir_path in [static_dir, template_dir, data_dir]:
-#   try:
-#       if not dir_path.exists():
-#            dir_path.mkdir(parents=True, exist_ok=True)
-#    except OSError as e:
-#        print(f"Cảnh báo: Không thể tạo thư mục {dir_path}: {e}")
-
-# 4. Cấu hình Flask chuẩn
-app = Flask(__name__, 
-            template_folder=str(template_dir),
-            static_folder=str(static_dir))
-
-app.secret_key = 'your-secret-key-here'  # <-- Thêm dòng này (dùng key phức tạp hơn cho production)
-csrf = CSRFProtect(app)  # Rồi mới khởi tạo CSRF
-
-# ===== THÊM MỚI: Rate Limiting =====
+# Rate limiting storage
 request_history = {}
 
-def rate_limit(max_requests=5, time_window=60):
+
+# ============================================
+# HELPER FUNCTIONS
+# ============================================
+
+def get_db_connection():
+    """Get database connection"""
+    try:
+        conn = mysql.connector.connect(**Config.DB_CONFIG)
+        return conn
+    except Error as e:
+        print(f"Database connection error: {e}")
+        return None
+
+
+def db_cursor(dictionary=False):
+    """Context manager for database cursor"""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor(dictionary=dictionary) if dictionary else conn.cursor()
+        yield cursor
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def allowed_file(filename, allowed_set):
+    """Check if file extension is allowed"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_set
+
+
+def allowed_audio(filename):
+    """Check if audio file is allowed"""
+    return allowed_file(filename, Config.ALLOWED_AUDIO)
+
+
+def allowed_image(filename):
+    """Check if image file is allowed"""
+    return allowed_file(filename, Config.ALLOWED_IMAGES)
+
+
+def rate_limit(max_requests=None, time_window=None):
+    """Rate limiting decorator"""
+    if max_requests is None:
+        max_requests = Config.RATE_LIMIT_REQUESTS
+    if time_window is None:
+        time_window = Config.RATE_LIMIT_WINDOW
+    
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
@@ -178,6 +180,7 @@ def rate_limit(max_requests=5, time_window=60):
             if client_ip not in request_history:
                 request_history[client_ip] = []
             
+            # Clean old requests
             request_history[client_ip] = [
                 req_time for req_time in request_history[client_ip]
                 if current_time - req_time < time_window
@@ -185,7 +188,8 @@ def rate_limit(max_requests=5, time_window=60):
             
             if len(request_history[client_ip]) >= max_requests:
                 return jsonify({
-                    "status": "Loi",
+                    "status": "error",
+                    "message": f"Too many requests. Please wait {time_window} seconds.",
                     "feedback": f"Bạn đã gửi quá {max_requests} request trong {time_window} giây. Vui lòng đợi!"
                 }), 429
             
@@ -193,97 +197,531 @@ def rate_limit(max_requests=5, time_window=60):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
-# ===== KẾT THÚC Rate Limiting =====
 
-# ===== THÊM MỚI: Retry Mechanism cho Gemini =====
-# --- CẤU HÌNH GOOGLE AI ---
-from google import genai
-from google.genai import types
-
-# Khởi tạo client (giữ nguyên của bạn)
-client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 
 def call_gemini_with_retry(prompt, retries=3, delay=5):
-    """
-    Hàm gọi Gemini có khả năng tự động thử lại nếu gặp lỗi 429
-    """
+    """Call Gemini API with retry logic"""
+    if not ai_client:
+        return "AI service not configured. Please set GEMINI_API_KEY."
+    
     for i in range(retries):
         try:
-            # Sử dụng model flash-8b để có hạn mức cao hơn
-            response = client.models.generate_content(
-                model='gemini-1.5-flash-8b', 
+            response = ai_client.models.generate_content(
+                model='gemini-1.5-flash-8b',
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    max_output_tokens=500, # Giới hạn để tiết kiệm token
+                    max_output_tokens=500,
                     temperature=0.7
                 )
             )
             return response.text
         except Exception as e:
-            # Nếu là lỗi quá tải (429) và chưa hết số lần thử
             if "429" in str(e) and i < retries - 1:
-                print(f"⚠️ Hết hạn mức Gemini (429). Đang đợi {delay} giây để thử lại lần {i+1}...")
+                print(f"⚠️ Rate limit exceeded. Retrying in {delay} seconds... (Attempt {i+1}/{retries})")
                 time.sleep(delay)
-                delay *= 2 # Tăng thời gian đợi gấp đôi cho lần sau (Exponential backoff)
-                continue
+                delay *= 2
             else:
-                print(f"❌ Lỗi AI: {str(e)}")
-                return f"Lỗi: {str(e)}"
-    return "Hệ thống AI hiện đang quá tải, vui lòng thử lại sau vài phút."
+                print(f"❌ AI Error: {str(e)}")
+                return f"Error: {str(e)}"
+    
+    return "AI service temporarily unavailable. Please try again later."
 
-# Kết nối database
-def get_db_connection():
-    conn = mysql.connector.connect(**DB_CONFIG)
-    return conn
 
-# THÊM: Cấu hình upload ảnh ca sĩ
-SINGER_IMAGE_FOLDER = 'static/images/singers'
-app.config['SINGER_IMAGE_FOLDER'] = SINGER_IMAGE_FOLDER
+def format_date(date_obj, format_str='%d/%m/%Y'):
+    """Format date object"""
+    if date_obj:
+        return date_obj.strftime(format_str)
+    return None
 
-# Tạo thư mục nếu chưa tồn tại
-os.makedirs(SINGER_IMAGE_FOLDER, exist_ok=True)
-# Google API
-from google import genai
-# Khởi tạo AI (GEMINI_API_KEY nằm trong file .env nhé)
-client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 
-# Khi muốn dùng AI để chấm điểm SQL:
-# response = client.models.generate_content(model='gemini-1.5-flash', contents='Câu hỏi của bạn...')
-# print(response.text)
-
-# --- ROUTES & API ---
+# ============================================
+# ROUTES - MAIN PAGES
+# ============================================
 
 @app.route('/')
 def index():
+    """Home page"""
     return render_template('index.html')
 
-# Cập nhật route /thuc-hanh-ai
-@app.route('/thuc-hanh-ai', methods=['GET', 'POST'])
-@csrf.exempt 
-def thuc_hanh_ai():
-    # In debug để xem dữ liệu
-    print("=== THUC HANH AI ===")
-    print("Method:", request.method)
-    print("Content-Type:", request.content_type)
+
+@app.route('/nhacsi')
+def nhacsi_list():
+    """List all composers"""
+    conn = get_db_connection()
+    if not conn:
+        flash('Database connection error', 'danger')
+        return render_template('nhacsi_list.html', nhacsi_list=[])
     
-    # Xử lý GET request - hiển thị trang
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM nhacsi ORDER BY tennhacsi")
+        nhacsi_list = cursor.fetchall()
+    except Error as e:
+        flash(f'Error: {str(e)}', 'danger')
+        nhacsi_list = []
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return render_template('nhacsi_list.html', nhacsi_list=nhacsi_list)
+
+
+@app.route('/nhacsi/<int:id>')
+def nhacsi_detail(id):
+    """Composer detail page"""
+    return render_template('nhacsi_detail.html', idnhacsi=id)
+
+
+@app.route('/casi')
+def casi_list():
+    """List all singers with pagination"""
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    filter_by = request.args.get('filter', 'all')
+    
+    conn = get_db_connection()
+    if not conn:
+        flash('Database connection error', 'danger')
+        return render_template('casi_list.html', casi_list=[])
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Base query
+        query = """
+            SELECT 
+                c.idcasi,
+                c.tencasi,
+                c.Ngaysinh as ngaysinh,
+                c.Sunghiep as sunghiep,
+                c.anhdaidien,
+                COUNT(b.idbanthuam) as soluong_banthuam,
+                DATE_FORMAT(c.created_at, '%d/%m/%Y') as ngay_them
+            FROM casi c
+            LEFT JOIN banthuam b ON c.idcasi = b.idcasi
+        """
+        
+        conditions = []
+        if filter_by == 'has_records':
+            conditions.append("b.idbanthuam IS NOT NULL")
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " GROUP BY c.idcasi"
+        
+        # Sorting
+        if filter_by == 'newest':
+            query += " ORDER BY c.created_at DESC"
+        elif filter_by == 'oldest':
+            query += " ORDER BY c.created_at ASC"
+        else:
+            query += " ORDER BY c.tencasi ASC"
+        
+        # Pagination
+        query += f" LIMIT {per_page} OFFSET {(page - 1) * per_page}"
+        
+        cursor.execute(query)
+        casi_list = cursor.fetchall()
+        
+        # Count total
+        count_query = "SELECT COUNT(*) as total FROM casi c"
+        if conditions:
+            count_query += " WHERE " + " AND ".join(conditions)
+        
+        cursor.execute(count_query)
+        total = cursor.fetchone()['total']
+        total_pages = (total + per_page - 1) // per_page
+        
+    except Error as e:
+        flash(f'Error: {str(e)}', 'danger')
+        casi_list = []
+        total_pages = 0
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return render_template(
+        'casi_list.html',
+        casi_list=casi_list,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages,
+        filter_by=filter_by
+    )
+
+
+@app.route('/casi/<int:id>')
+def casi_detail(id):
+    """Singer detail page"""
+    conn = get_db_connection()
+    if not conn:
+        flash('Database connection error', 'danger')
+        return render_template('404.html'), 404
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Get singer info
+        cursor.execute("""
+            SELECT 
+                idcasi, 
+                tencasi, 
+                Ngaysinh as ngaysinh,
+                Sunghiep as sunghiep,
+                anhdaidien,
+                DATE_FORMAT(created_at, '%%d/%%m/%%Y') as ngay_them
+            FROM casi 
+            WHERE idcasi = %s
+        """, (id,))
+        casi = cursor.fetchone()
+        
+        if not casi:
+            return render_template('404.html'), 404
+        
+        # Get recordings
+        cursor.execute("""
+            SELECT 
+                ba.idbanthuam,
+                bn.idbannhac,
+                bn.tenbannhac,
+                ns.idnhacsi,
+                ns.tennhacsi,
+                DATE_FORMAT(ba.created_at, '%%d/%%m/%%Y') as ngay_them
+            FROM banthuam ba
+            JOIN bannhac bn ON ba.idbannhac = bn.idbannhac
+            JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
+            WHERE ba.idcasi = %s
+            ORDER BY ba.created_at DESC
+        """, (id,))
+        banthuam = cursor.fetchall()
+        
+    except Error as e:
+        flash(f'Error: {str(e)}', 'danger')
+        return render_template('404.html'), 404
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return render_template(
+        'casi_detail.html',
+        casi=casi,
+        banthuam=banthuam
+    )
+
+
+@app.route('/bannhac')
+def bannhac_list():
+    """List all songs with pagination"""
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    nhacsi_id = request.args.get('nhacsi', None)
+    sort_by = request.args.get('sort', 'newest')
+    
+    conn = get_db_connection()
+    if not conn:
+        flash('Database connection error', 'danger')
+        return render_template('bannhac_list.html', bannhac_list=[])
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Get composers for filter
+        cursor.execute("SELECT idnhacsi, tennhacsi FROM nhacsi ORDER BY tennhacsi")
+        nhacsi_list = cursor.fetchall()
+        
+        # Base query
+        query = """
+            SELECT 
+                b.idbannhac,
+                b.tenbannhac,
+                b.theloai,
+                b.idnhacsi,
+                n.tennhacsi,
+                COUNT(ba.idbanthuam) as soluong_banthuam,
+                DATE_FORMAT(b.created_at, '%d/%m/%Y') as ngay_them
+            FROM bannhac b
+            JOIN nhacsi n ON b.idnhacsi = n.idnhacsi
+            LEFT JOIN banthuam ba ON b.idbannhac = ba.idbannhac
+        """
+        
+        conditions = []
+        if nhacsi_id:
+            conditions.append(f"b.idnhacsi = {nhacsi_id}")
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " GROUP BY b.idbannhac"
+        
+        # Sorting
+        sort_options = {
+            'newest': " ORDER BY b.created_at DESC",
+            'oldest': " ORDER BY b.created_at ASC",
+            'name_asc': " ORDER BY b.tenbannhac ASC",
+            'name_desc': " ORDER BY b.tenbannhac DESC",
+            'popular': " ORDER BY soluong_banthuam DESC"
+        }
+        query += sort_options.get(sort_by, sort_options['newest'])
+        
+        # Pagination
+        query += f" LIMIT {per_page} OFFSET {(page - 1) * per_page}"
+        
+        cursor.execute(query)
+        bannhac_list = cursor.fetchall()
+        
+        # Count total
+        count_query = "SELECT COUNT(*) as total FROM bannhac"
+        if conditions:
+            count_query += " WHERE " + " AND ".join(conditions)
+        
+        cursor.execute(count_query)
+        total = cursor.fetchone()['total']
+        total_pages = (total + per_page - 1) // per_page
+        
+    except Error as e:
+        flash(f'Error: {str(e)}', 'danger')
+        bannhac_list = []
+        nhacsi_list = []
+        total_pages = 0
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return render_template(
+        'bannhac_list.html',
+        bannhac_list=bannhac_list,
+        nhacsi_list=nhacsi_list,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages,
+        nhacsi_id=nhacsi_id,
+        sort_by=sort_by
+    )
+
+
+@app.route('/bannhac/<int:id>')
+def bannhac_detail(id):
+    """Song detail page"""
+    conn = get_db_connection()
+    if not conn:
+        flash('Database connection error', 'danger')
+        return render_template('404.html'), 404
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Get song info
+        cursor.execute("""
+            SELECT 
+                b.*,
+                b.idnhacsi,
+                n.tennhacsi,
+                DATE_FORMAT(b.created_at, '%d/%m/%Y') as ngay_them
+            FROM bannhac b
+            JOIN nhacsi n ON b.idnhacsi = n.idnhacsi
+            WHERE b.idbannhac = %s
+        """, (id,))
+        bannhac = cursor.fetchone()
+        
+        if not bannhac:
+            return render_template('404.html'), 404
+        
+        # Get recordings
+        cursor.execute("""
+            SELECT 
+                ba.idbanthuam,
+                c.idcasi,
+                c.tencasi,
+                DATE_FORMAT(ba.created_at, '%d/%m/%Y') as ngay_them
+            FROM banthuam ba
+            JOIN casi c ON ba.idcasi = c.idcasi
+            WHERE ba.idbannhac = %s
+        """, (id,))
+        banthuam = cursor.fetchall()
+        
+    except Error as e:
+        flash(f'Error: {str(e)}', 'danger')
+        return render_template('404.html'), 404
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return render_template(
+        'bannhac_detail.html',
+        bannhac=bannhac,
+        banthuam=banthuam
+    )
+
+
+@app.route('/banthuam')
+def banthuam_list():
+    """List all recordings with pagination"""
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    offset = (page - 1) * per_page
+    
+    search_query = request.args.get('q', '').strip()
+    artist_id = request.args.get('artist', '')
+    sort_option = request.args.get('sort', 'newest')
+    
+    conn = get_db_connection()
+    if not conn:
+        flash('Database connection error', 'danger')
+        return render_template('banthuam_list.html', banthuam_list=[])
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Get artists for filter
+        cursor.execute("SELECT idcasi, tencasi FROM casi ORDER BY tencasi")
+        artists = cursor.fetchall()
+        
+        # Build query
+        query = """
+            SELECT 
+                bt.idbanthuam,
+                bt.ngaythuam,
+                bt.thoiluong,
+                cs.idcasi,
+                cs.tencasi,
+                bn.idbannhac,
+                bn.tenbannhac,
+                ns.idnhacsi,
+                ns.tennhacsi
+            FROM banthuam bt
+            JOIN casi cs ON bt.idcasi = cs.idcasi
+            JOIN bannhac bn ON bt.idbannhac = bn.idbannhac
+            JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
+            WHERE 1=1
+        """
+        
+        params = []
+        
+        if search_query:
+            query += " AND (ns.tennhacsi LIKE %s OR bn.tenbannhac LIKE %s OR cs.tencasi LIKE %s)"
+            params.extend([f"%{search_query}%", f"%{search_query}%", f"%{search_query}%"])
+        
+        if artist_id:
+            query += " AND bt.idcasi = %s"
+            params.append(artist_id)
+        
+        # Sorting
+        sort_options = {
+            'newest': " ORDER BY bt.ngaythuam DESC",
+            'oldest': " ORDER BY bt.ngaythuam ASC",
+            'name_asc': " ORDER BY bn.tenbannhac ASC",
+            'name_desc': " ORDER BY bn.tenbannhac DESC"
+        }
+        query += sort_options.get(sort_option, sort_options['newest'])
+        
+        # Count total
+        count_query = "SELECT COUNT(*) as total FROM (" + query + ") as subquery"
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()['total']
+        
+        # Pagination
+        query += " LIMIT %s OFFSET %s"
+        params.extend([per_page, offset])
+        cursor.execute(query, params)
+        recordings = cursor.fetchall()
+        
+        total_pages = (total + per_page - 1) // per_page
+        
+    except Error as e:
+        flash(f'Error: {str(e)}', 'danger')
+        recordings = []
+        artists = []
+        total_pages = 0
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return render_template(
+        'banthuam_list.html',
+        banthuam_list=recordings,
+        artists=artists,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages,
+        search_query=search_query
+    )
+
+
+@app.route('/banthuam/detail/<int:recording_id>')
+def recording_detail(recording_id):
+    """Recording detail page"""
+    conn = get_db_connection()
+    if not conn:
+        return "Database connection error", 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Get recording info
+        cursor.execute("""
+            SELECT 
+                bt.idbanthuam,
+                bt.idbannhac,
+                bt.idcasi,
+                bt.ngaythuam as ngaythu,
+                bt.thoiluong,
+                bt.file_path,
+                bt.ghichu,
+                bt.lyrics,
+                cs.tencasi,
+                cs.idcasi,
+                bn.tenbannhac,
+                bn.idnhacsi,
+                ns.tennhacsi
+            FROM banthuam bt
+            JOIN casi cs ON bt.idcasi = cs.idcasi
+            JOIN bannhac bn ON bt.idbannhac = bn.idbannhac
+            JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
+            WHERE bt.idbanthuam = %s
+        """, (recording_id,))
+        recording = cursor.fetchone()
+        
+        if not recording:
+            return "Recording not found", 404
+        
+        # Get related recordings
+        cursor.execute("""
+            SELECT 
+                bt.idbanthuam,
+                cs.tencasi,
+                bt.ngaythuam as ngaythu,
+                bt.thoiluong
+            FROM banthuam bt
+            JOIN casi cs ON bt.idcasi = cs.idcasi
+            WHERE bt.idbannhac = %s AND bt.idbanthuam != %s
+            LIMIT 5
+        """, (recording['idbannhac'], recording_id))
+        related = cursor.fetchall()
+        
+    except Error as e:
+        print(f"Error: {e}")
+        return "Internal server error", 500
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return render_template(
+        'banthuam_detail.html',
+        recording=recording,
+        related_recordings=related
+    )
+
+
+@app.route('/thuc-hanh-ai', methods=['GET', 'POST'])
+@csrf.exempt
+def thuc_hanh_ai():
+    """AI Practice page"""
     if request.method == 'GET':
         return render_template('thuc_hanh_ai.html')
     
-    # Xử lý POST request - API
+    # Handle POST request
     try:
-        # Lấy dữ liệu từ request
-        if request.is_json:
-            data = request.get_json()
-            print("JSON data:", data)
-        else:
-            data = request.form.to_dict()
-            print("Form data:", data)
+        data = request.get_json() if request.is_json else request.form.to_dict()
         
         if not data:
             return jsonify({
-                "status": "Loi",
-                "message": "Không nhận được dữ liệu",
+                "status": "error",
+                "message": "No data received",
                 "score": 0,
                 "feedback": "Vui lòng nhập câu lệnh SQL!"
             })
@@ -294,49 +732,498 @@ def thuc_hanh_ai():
         
         if not sql_query:
             return jsonify({
-                "status": "Loi",
-                "message": "Câu lệnh SQL trống",
+                "status": "error",
+                "message": "Empty SQL query",
                 "score": 0,
                 "feedback": "Vui lòng nhập câu lệnh SQL!"
             })
         
         if action == 'evaluate':
-            # Sử dụng AI để đánh giá
             result = sql_assistant.evaluate_sql(sql_query, exercise_id)
             
-            # Thêm SQL mẫu nếu có
             if exercise_id in sql_assistant.sample_exercises:
                 result['sql_chuan'] = sql_assistant.sample_exercises[exercise_id]['solution']
             
-            # Đảm bảo có đủ các trường cần thiết
             return jsonify({
                 "status": result.get('status', 'unknown'),
-                "message": result.get('message', 'Đã đánh giá câu lệnh SQL'),
+                "message": result.get('message', 'SQL evaluated'),
                 "feedback": result.get('feedback', ''),
                 "score": result.get('score', 0),
                 "sql_chuan": result.get('sql_chuan', '')
             })
             
         elif action == 'execute':
-            # Thực thi SQL an toàn
             result = sql_assistant.execute_sql_safe(sql_query)
             return jsonify(result)
             
     except Exception as e:
-        print(f"Lỗi: {str(e)}")
+        print(f"Error: {str(e)}")
         return jsonify({
-            "status": "Loi",
-            "message": f"Lỗi xử lý: {str(e)}",
+            "status": "error",
+            "message": f"Error: {str(e)}",
             "feedback": "Có lỗi xảy ra, vui lòng thử lại!",
             "score": 0,
             "sql_chuan": ""
         })
 
-# API thực thi SQL an toàn
+
+# ============================================
+# API ROUTES
+# ============================================
+
+@app.route('/api/stats')
+def get_stats():
+    """Get database statistics"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        stats = {}
+        
+        tables = ['nhacsi', 'casi', 'bannhac', 'banthuam']
+        for table in tables:
+            cursor.execute(f"SELECT COUNT(*) as count FROM {table}")
+            stats[table] = cursor.fetchone()['count']
+        
+        return jsonify(stats)
+        
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/nhacsi')
+def get_nhacsi():
+    """Get all composers"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM nhacsi")
+        data = cursor.fetchall()
+        return jsonify(data)
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/nhacsi/latest')
+def get_latest_nhacsi():
+    """Get latest composers"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM nhacsi ORDER BY created_at DESC LIMIT 5")
+        data = cursor.fetchall()
+        return jsonify(data)
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/nhacsi/<int:id>')
+def get_nhacsi_detail(id):
+    """Get composer details"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Basic info
+        cursor.execute("""
+            SELECT 
+                idnhacsi, 
+                tennhacsi, 
+                ngaysinh, 
+                tieusu,
+                avatar,
+                DATE_FORMAT(created_at, '%d/%m/%Y') as ngay_them
+            FROM nhacsi 
+            WHERE idnhacsi = %s
+        """, (id,))
+        nhacsi = cursor.fetchone()
+        
+        if not nhacsi:
+            return jsonify({"error": "Composer not found"}), 404
+        
+        # Songs
+        cursor.execute("""
+            SELECT 
+                idbannhac, 
+                tenbannhac,
+                DATE_FORMAT(created_at, '%d/%m/%Y') as ngay_them
+            FROM bannhac
+            WHERE idnhacsi = %s
+            ORDER BY created_at DESC
+        """, (id,))
+        baihat = cursor.fetchall()
+        
+        # Count recordings per song
+        for bh in baihat:
+            cursor.execute("""
+                SELECT COUNT(*) as soluong_banthuam
+                FROM banthuam
+                WHERE idbannhac = %s
+            """, (bh['idbannhac'],))
+            result = cursor.fetchone()
+            bh['soluong_banthuam'] = result['soluong_banthuam'] if result else 0
+        
+        return jsonify({
+            "nhacsi": nhacsi,
+            "baihat": baihat
+        })
+        
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/casi/latest')
+def get_latest_casi():
+    """Get latest singers"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT idcasi, tencasi, ngaysinh, DATE_FORMAT(created_at, '%d/%m/%Y') as ngay_them 
+            FROM casi 
+            ORDER BY created_at DESC 
+            LIMIT 5
+        """)
+        data = cursor.fetchall()
+        return jsonify(data)
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/casi/<int:id>')
+def get_casi_detail_api(id):
+    """Get singer details"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Basic info
+        cursor.execute("""
+            SELECT 
+                idcasi, 
+                tencasi, 
+                ngaysinh, 
+                sunghiep,
+                DATE_FORMAT(created_at, '%d/%m/%Y') as ngay_them
+            FROM casi 
+            WHERE idcasi = %s
+        """, (id,))
+        casi = cursor.fetchone()
+        
+        if not casi:
+            return jsonify({"error": "Singer not found"}), 404
+        
+        # Recordings
+        cursor.execute("""
+            SELECT 
+                ba.idbanthuam,
+                ba.idbannhac,
+                bn.tenbannhac,
+                ns.idnhacsi,
+                ns.tennhacsi,
+                DATE_FORMAT(ba.created_at, '%d/%m/%Y') as ngay_them
+            FROM banthuam ba
+            JOIN bannhac bn ON ba.idbannhac = bn.idbannhac
+            JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
+            WHERE ba.idcasi = %s
+            ORDER BY ba.created_at DESC
+        """, (id,))
+        banthuam = cursor.fetchall()
+        
+        return jsonify({
+            "casi": casi,
+            "banthuam": banthuam
+        })
+        
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/casi/<int:id>', methods=['DELETE'])
+@csrf.exempt
+def delete_casi(id):
+    """Delete singer"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"success": False, "message": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Check if exists
+        cursor.execute("SELECT * FROM casi WHERE idcasi = %s", (id,))
+        casi = cursor.fetchone()
+        
+        if not casi:
+            return jsonify({
+                "success": False,
+                "message": "Singer not found"
+            }), 404
+        
+        # Check for recordings
+        cursor.execute("SELECT COUNT(*) as count FROM banthuam WHERE idcasi = %s", (id,))
+        result = cursor.fetchone()
+        count = result['count'] if result else 0
+        
+        if count > 0:
+            return jsonify({
+                "success": False,
+                "message": "Cannot delete singer with recordings"
+            }), 400
+        
+        # Delete image file
+        if casi.get('anhdaidien'):
+            file_path = os.path.join(Config.SINGER_IMAGE_FOLDER, casi['anhdaidien'])
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        
+        # Delete singer
+        cursor.execute("DELETE FROM casi WHERE idcasi = %s", (id,))
+        conn.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Singer deleted successfully"
+        })
+        
+    except Error as err:
+        conn.rollback()
+        return jsonify({
+            "success": False,
+            "message": f"Database error: {str(err)}"
+        }), 500
+    except Exception as e:
+        conn.rollback()
+        return jsonify({
+            "success": False,
+            "message": f"System error: {str(e)}"
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/bannhac/noibat')
+def get_featured_songs():
+    """Get featured songs"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT 
+                bn.idbannhac,
+                bn.tenbannhac,
+                bn.idnhacsi,
+                ns.tennhacsi,
+                COUNT(ba.idbanthuam) as soluong_banthuam,
+                DATE_FORMAT(bn.created_at, '%d/%m/%Y') as ngay_them
+            FROM bannhac bn
+            LEFT JOIN banthuam ba ON bn.idbannhac = ba.idbannhac
+            LEFT JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
+            GROUP BY bn.idbannhac
+            ORDER BY soluong_banthuam DESC
+            LIMIT 4
+        """)
+        data = cursor.fetchall()
+        return jsonify(data)
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/bannhac/<int:id>', methods=['DELETE'])
+@csrf.exempt
+def delete_bannhac_api(id):
+    """Delete song"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"success": False, "message": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Check if exists
+        cursor.execute("SELECT * FROM bannhac WHERE idbannhac = %s", (id,))
+        bannhac = cursor.fetchone()
+        
+        if not bannhac:
+            return jsonify({
+                "success": False,
+                "message": "Song not found"
+            }), 404
+        
+        # Check for recordings
+        cursor.execute("SELECT COUNT(*) as count FROM banthuam WHERE idbannhac = %s", (id,))
+        result = cursor.fetchone()
+        count = result['count'] if result else 0
+        
+        if count > 0:
+            return jsonify({
+                "success": False,
+                "message": "Cannot delete song with recordings"
+            }), 400
+        
+        # Delete song
+        cursor.execute("DELETE FROM bannhac WHERE idbannhac = %s", (id,))
+        conn.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Song deleted successfully"
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/banthuam/noibat')
+def get_featured_recordings():
+    """Get featured recordings"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT 
+                ba.idbanthuam,
+                ba.ngaythuam,
+                b.idbannhac,
+                b.tenbannhac,
+                c.idcasi,
+                c.tencasi,
+                COUNT(f.id) as luot_thich,
+                DATE_FORMAT(ba.created_at, '%d/%m/%Y') as ngay_them
+            FROM banthuam ba
+            JOIN bannhac b ON ba.idbannhac = b.idbannhac
+            JOIN casi c ON ba.idcasi = c.idcasi
+            LEFT JOIN favorites f ON ba.idbanthuam = f.idbanthuam
+            GROUP BY ba.idbanthuam
+            ORDER BY luot_thich DESC, ba.created_at DESC
+            LIMIT 6
+        """)
+        data = cursor.fetchall()
+        return jsonify(data)
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/banthuam', methods=['GET'])
+def get_recordings():
+    """Get recordings"""
+    song_id = request.args.get('bannhac')
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection error"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if song_id:
+            query = """
+                SELECT bt.idbanthuam, bt.ngaythuam, cs.tencasi
+                FROM banthuam bt
+                JOIN casi cs ON bt.idcasi = cs.idcasi
+                WHERE bt.idbannhac = %s
+            """
+            cursor.execute(query, (song_id,))
+        else:
+            cursor.execute("SELECT * FROM banthuam LIMIT 50")
+        
+        recordings = cursor.fetchall()
+        
+        # Format dates
+        for rec in recordings:
+            if 'ngaythuam' in rec and rec['ngaythuam']:
+                if hasattr(rec['ngaythuam'], 'isoformat'):
+                    rec['ngaythuam'] = rec['ngaythuam'].isoformat()
+        
+        return jsonify(recordings)
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/banthuam/<int:id>', methods=['DELETE'])
+def delete_banthuam(id):
+    """Delete recording"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"success": False, "message": "Database connection error"}), 500
+    
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM banthuam WHERE idbanthuam = %s", (id,))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ============================================
+# AI ROUTES
+# ============================================
+
 @app.route('/api/execute-sql', methods=['POST'])
 @csrf.exempt
 def execute_sql_api():
-    """API thực thi câu lệnh SQL an toàn (chỉ SELECT)"""
+    """Execute SQL safely (SELECT only)"""
     try:
         data = request.get_json()
         sql = data.get('sql', '').strip()
@@ -344,7 +1231,7 @@ def execute_sql_api():
         if not sql:
             return jsonify({
                 "success": False,
-                "error": "Vui lòng nhập câu lệnh SQL"
+                "error": "Please enter SQL query"
             })
         
         result = sql_assistant.execute_sql_safe(sql)
@@ -356,31 +1243,24 @@ def execute_sql_api():
             "error": str(e)
         })
 
-# API tạo bài tập mới bằng AI
+
 @app.route('/api/generate-exercise', methods=['POST'])
-@csrf.exempt  # Thêm dòng này để tránh lỗi CSRF
+@csrf.exempt
 def generate_exercise_api():
-    """API tạo bài tập SQL mới bằng AI"""
+    """Generate new SQL exercise using AI"""
     try:
-        # Lấy dữ liệu từ request (có thể có hoặc không)
-        if request.is_json:
-            data = request.get_json() or {}
-        else:
-            data = request.form.to_dict() or {}
-        
+        data = request.get_json() if request.is_json else request.form.to_dict() or {}
         topic = data.get('topic', '')
-        print(f"📝 Đang tạo bài tập mới với topic: {topic}")
         
-        # Sử dụng AI để tạo bài tập mới
+        print(f"📝 Generating new exercise with topic: {topic}")
+        
         exercise = sql_assistant.generate_exercise(topic)
         
-        # Đảm bảo exercise có đủ các trường cần thiết
         if not isinstance(exercise, dict):
             exercise = {}
         
-        # Tạo bài tập mẫu nếu AI không trả về kết quả
+        # Fallback exercises
         if not exercise or 'title' not in exercise:
-            import random
             sample_exercises = [
                 {
                     'title': 'Tìm tất cả bản nhạc của thể loại "Nhạc trẻ"',
@@ -403,15 +1283,14 @@ def generate_exercise_api():
             ]
             exercise = random.choice(sample_exercises)
         
-        print(f"✅ Đã tạo bài tập: {exercise.get('title', 'Không có tiêu đề')}")
+        print(f"✅ Generated exercise: {exercise.get('title', 'No title')}")
         return jsonify(exercise)
         
     except Exception as e:
-        print(f"❌ Lỗi tạo bài tập: {str(e)}")
+        print(f"❌ Error generating exercise: {str(e)}")
         import traceback
         traceback.print_exc()
         
-        # Trả về bài tập mẫu khi có lỗi
         fallback_exercise = {
             'title': 'Liệt kê tất cả bản nhạc',
             'description': 'Viết câu lệnh SQL để lấy danh sách tất cả bản nhạc trong database',
@@ -420,10 +1299,10 @@ def generate_exercise_api():
         }
         return jsonify(fallback_exercise)
 
-# API lấy danh sách bài tập
+
 @app.route('/api/exercises', methods=['GET'])
 def get_exercises_api():
-    """API lấy danh sách bài tập SQL"""
+    """Get list of SQL exercises"""
     exercises = []
     for id, ex in sql_assistant.sample_exercises.items():
         exercises.append({
@@ -433,10 +1312,10 @@ def get_exercises_api():
         })
     return jsonify(exercises)
 
-# API lấy chi tiết bài tập
+
 @app.route('/api/exercises/<exercise_id>', methods=['GET'])
 def get_exercise_detail_api(exercise_id):
-    """API lấy chi tiết bài tập"""
+    """Get exercise details"""
     if exercise_id in sql_assistant.sample_exercises:
         ex = sql_assistant.sample_exercises[exercise_id]
         return jsonify({
@@ -446,40 +1325,37 @@ def get_exercise_detail_api(exercise_id):
             'hint': ex['hint'],
             'solution': ex['solution']
         })
-    return jsonify({"error": "Không tìm thấy bài tập"}), 404
+    return jsonify({"error": "Exercise not found"}), 404
 
-# API chat với AI assistant
+
 @app.route('/api/ai-chat', methods=['POST'])
 @csrf.exempt
 def ai_chat_api():
-    """API chat với AI assistant về SQL"""
+    """Chat with AI assistant about SQL"""
     try:
         data = request.get_json()
         if not data:
             return jsonify({
                 "success": False,
-                "error": "Không nhận được dữ liệu"
+                "error": "No data received"
             })
         
         message = data.get('message', '').strip()
         context = data.get('context', '')
         
-        print(f"🤖 AI Chat - Message: {message}")  # Debug
-        print(f"📚 AI Chat - Context: {context}")  # Debug
-        
         if not message:
             return jsonify({
                 "success": False,
-                "error": "Vui lòng nhập câu hỏi"
+                "error": "Please enter a question"
             })
         
-        # Sử dụng method chat_response mới
         response = sql_assistant.chat_response(message, context)
         if not response:
             return jsonify({
-            "success": False,
-            "error": "AI không tạo được phản hồi"
+                "success": False,
+                "error": "AI could not generate response"
             })
+        
         return jsonify({
             "success": True,
             "response": response
@@ -492,11 +1368,11 @@ def ai_chat_api():
             "error": str(e)
         })
 
-# API kiểm tra cú pháp SQL
+
 @app.route('/api/validate-sql', methods=['POST'])
 @csrf.exempt
 def validate_sql_api():
-    """API kiểm tra cú pháp SQL"""
+    """Validate SQL syntax"""
     try:
         data = request.get_json()
         sql = data.get('sql', '').strip()
@@ -504,24 +1380,22 @@ def validate_sql_api():
         if not sql:
             return jsonify({
                 "valid": False,
-                "error": "Câu lệnh SQL trống"
+                "error": "Empty SQL query"
             })
         
-        # Chỉ kiểm tra cú pháp, không thực thi
-        conn = mysql.connector.connect(**DB_CONFIG)
+        conn = mysql.connector.connect(**Config.DB_CONFIG)
         cursor = conn.cursor()
         
         try:
-            # Thử phân tích cú pháp
             cursor.execute(f"EXPLAIN {sql}")
             return jsonify({
                 "valid": True,
-                "message": "Cú pháp SQL hợp lệ"
+                "message": "SQL syntax is valid"
             })
         except mysql.connector.Error as err:
             return jsonify({
                 "valid": False,
-                "error": f"Lỗi cú pháp: {err.msg}"
+                "error": f"Syntax error: {err.msg}"
             })
         finally:
             cursor.close()
@@ -533,15 +1407,13 @@ def validate_sql_api():
             "error": str(e)
         })
 
-# API thống kê học tập
+
 @app.route('/api/learning-stats', methods=['GET'])
 def learning_stats_api():
-    """API thống kê quá trình học tập"""
-    # Trong thực tế, bạn nên lưu lịch sử học tập vào database
-    # Đây là dữ liệu mẫu
+    """Get learning statistics"""
     return jsonify({
         "total_exercises": len(sql_assistant.sample_exercises),
-        "completed": 0,  # Sẽ cập nhật khi có tính năng lưu lịch sử
+        "completed": 0,
         "accuracy": 0,
         "streak": 0,
         "recommendations": [
@@ -559,441 +1431,80 @@ def learning_stats_api():
     })
 
 
-@app.route('/api/stats')
-def get_database_stats():
-    """Lấy thống kê tổng hợp trong 1 lần kết nối"""
-    try:
-        with db_cursor() as cursor:
-            queries = {
-                'nhacsi': "SELECT COUNT(*) as count FROM nhacsi",
-                'casi': "SELECT COUNT(*) as count FROM casi",
-                'bannhac': "SELECT COUNT(*) as count FROM bannhac",
-                'banthuam': "SELECT COUNT(*) as count FROM banthuam"
-            }
-            results = {}
-            for key, sql in queries.items():
-                cursor.execute(sql)
-                results[key] = cursor.fetchone()['count']
-            return jsonify(results)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+# ============================================
+# FORM ROUTES - ADD/EDIT
+# ============================================
 
-# API lấy danh sách nhạc sĩ
-@app.route('/api/nhacsi')
-def get_nhacsi():
+@app.route('/casi/add', methods=['GET', 'POST'])
+@csrf.exempt
+def add_casi():
+    """Add new singer"""
+    if request.method == 'GET':
+        return render_template('casi_add.html')
+    
+    # POST request
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM nhacsi")
-    data = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return jsonify(data)
-
-# API thêm nhạc sĩ
-@app.route('/api/nhacsi', methods=['POST'])
-def add_nhacsi1():
-    data = request.get_json()
-    conn = get_db_connection()
+    if not conn:
+        flash('Database connection error', 'danger')
+        return redirect(url_for('add_casi'))
+    
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO nhacsi (tennhacsi, ngaysinh, tieusu) VALUES (%s, %s, %s)",
-        (data['tennhacsi'], data['ngaysinh'], data['tieusu'])
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return jsonify({"status": "success"})
-
-# Tương tự cho các API khác (ca sĩ, bản nhạc, bản thu âm)
-# Thêm các API endpoint mới
-@app.route('/api/stats')
-def get_stats():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    stats = {}
-    
-    # Đếm số lượng nhạc sĩ
-    cursor.execute("SELECT COUNT(*) as count FROM nhacsi")
-    stats['nhacsi'] = cursor.fetchone()['count']
-    
-    # Đếm số lượng ca sĩ
-    cursor.execute("SELECT COUNT(*) as count FROM casi")
-    stats['casi'] = cursor.fetchone()['count']
-    
-    # Đếm số lượng bản nhạc
-    cursor.execute("SELECT COUNT(*) as count FROM bannhac")
-    stats['bannhac'] = cursor.fetchone()['count']
-    
-    # Đếm số lượng bản thu âm
-    cursor.execute("SELECT COUNT(*) as count FROM banthuam")
-    stats['banthuam'] = cursor.fetchone()['count']
-    
-    cursor.close()
-    conn.close()
-    
-    return jsonify(stats)
-
-@app.route('/api/nhacsi/latest')
-def get_latest_nhacsi():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM nhacsi ORDER BY created_at DESC LIMIT 5")
-    data = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return jsonify(data)
-
-# Thêm các API tương tự cho casi và bannhac
-
-    data = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return jsonify(data)
-
-# API lấy danh sách 5 ca sĩ mới nhất
-@app.route('/api/casi/latest')
-def get_latest_casi():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT idcasi, tencasi, ngaysinh, DATE_FORMAT(created_at, '%d/%m/%Y') as ngay_them 
-        FROM casi 
-        ORDER BY created_at DESC 
-        LIMIT 5
-    """)
-    data = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return jsonify(data)
-# API lấy danh sách bản nhạc nổi bật (có nhiều bản thu âm nhất)
-@app.route('/api/bannhac/noibat')
-def get_featured_bannhac():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT 
-            bn.idbannhac, 
-            bn.tenbannhac,
-	    bn.idnhacsi, 
-            ns.tennhacsi,
-            COUNT(ba.idbanthuam) as soluong_banthuam,
-            DATE_FORMAT(bn.created_at, '%d/%m/%Y') as ngay_them
-        FROM bannhac bn
-        LEFT JOIN banthuam ba ON bn.idbannhac = ba.idbannhac
-        LEFT JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
-        GROUP BY bn.idbannhac
-        ORDER BY soluong_banthuam DESC, bn.created_at DESC
-        LIMIT 5
-    """)
-    data = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return jsonify(data)
-# API lấy thông tin chi tiết nhạc sĩ
-@app.route('/api/nhacsi/<int:id>')
-def get_nhacsi_detail(id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # Lấy thông tin cơ bản
-    cursor.execute("""
-        SELECT 
-            idnhacsi, 
-            tennhacsi, 
-            ngaysinh, 
-            tieusu,
-            avatar,
-            DATE_FORMAT(created_at, '%d/%m/%Y') as ngay_them
-        FROM nhacsi 
-        WHERE idnhacsi = %s
-    """, (id,))
-    nhacsi = cursor.fetchone()
-    
-    if not nhacsi:
-        return jsonify({"error": "Nhạc sĩ không tồn tại"}), 404
-    
-    # Lấy danh sách bài hát
-    cursor.execute("""
-        SELECT 
-            idbannhac, 
-            tenbannhac,
-            DATE_FORMAT(created_at, '%d/%m/%Y') as ngay_them
-        FROM bannhac
-        WHERE idnhacsi = %s
-        ORDER BY created_at DESC
-    """, (id,))
-    baihat = cursor.fetchall()
-    
-    # Lấy số lượng bản thu âm cho mỗi bài hát
-    for bh in baihat:
-        cursor.execute("""
-            SELECT COUNT(*) as soluong_banthuam
-            FROM banthuam
-            WHERE idbannhac = %s
-        """, (bh['idbannhac'],))
-        result = cursor.fetchone()
-        bh['soluong_banthuam'] = result['soluong_banthuam']
-    
-    cursor.close()
-    conn.close()
-    
-    return jsonify({
-        "nhacsi": nhacsi,
-        "baihat": baihat
-    })
-@app.route('/nhacsi')
-def nhacsi_list():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM nhacsi ORDER BY tennhacsi")
-    nhacsi_list = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return render_template('nhacsi_list.html', nhacsi_list=nhacsi_list)
-@app.route('/nhacsi/<int:id>')
-def nhacsi_detail(id):
-    return render_template('nhacsi_detail.html', idnhacsi=id)
-
-# API lấy thông tin chi tiết ca sĩ
-@app.route('/api/casi/<int:id>')
-def get_casi_detail(id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # Lấy thông tin cơ bản
-    cursor.execute("""
-        SELECT 
-            idcasi, 
-            tencasi, 
-            ngaysinh, 
-            sunghiep,
-            DATE_FORMAT(created_at, '%d/%m/%Y') as ngay_them
-        FROM casi 
-        WHERE idcasi = %s
-    """, (id,))
-    casi = cursor.fetchone()
-    
-    if not casi:
-        return jsonify({"error": "Ca sĩ không tồn tại"}), 404
-    
-    # Lấy danh sách bản thu âm
-    cursor.execute("""
-        SELECT 
-            ba.idbanthuam,
-            ba.idbannhac,
-            bn.tenbannhac,
-            ns.idnhacsi,
-            ns.tennhacsi,
-            DATE_FORMAT(ba.created_at, '%d/%m/%Y') as ngay_them
-        FROM banthuam ba
-        JOIN bannhac bn ON ba.idbannhac = bn.idbannhac
-        JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
-        WHERE ba.idcasi = %s
-        ORDER BY ba.created_at DESC
-    """, (id,))
-    banthuam = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
-    return jsonify({
-        "casi": casi,
-        "banthuam": banthuam
-    })
-
-# Route hiển thị trang chi tiết
-@app.route('/casi/<int:id>')
-def casi_detail(id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # SỬA: Thêm trường anhdaidien và đổi tên cột cho đúng
-    cursor.execute("""
-        SELECT 
-            idcasi, 
-            tencasi, 
-            Ngaysinh as ngaysinh,      -- SỬA: ngaysinh -> Ngaysinh
-            Sunghiep as sunghiep,       -- SỬA: sunghiep -> Sunghiep
-            anhdaidien,                  -- THÊM: trường ảnh đại diện
-            DATE_FORMAT(created_at, '%%d/%%m/%%Y') as ngay_them
-        FROM casi 
-        WHERE idcasi = %s
-    """, (id,))
-    casi = cursor.fetchone()
-    
-    if not casi:
-        return render_template('404.html'), 404
-    
-    # Lấy danh sách bản thu âm của ca sĩ
-    cursor.execute("""
-        SELECT 
-            ba.idbanthuam,
-            bn.idbannhac,
-            bn.tenbannhac,
-            ns.idnhacsi,
-            ns.tennhacsi,
-            DATE_FORMAT(ba.created_at, '%%d/%%m/%%Y') as ngay_them
-        FROM banthuam ba
-        JOIN bannhac bn ON ba.idbannhac = bn.idbannhac
-        JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
-        WHERE ba.idcasi = %s
-        ORDER BY ba.created_at DESC
-    """, (id,))
-    banthuam = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
-    return render_template('casi_detail.html', 
-                         casi=casi,
-                         banthuam=banthuam)
-@app.route('/casi')
-def casi_list():
-    page = request.args.get('page', 1, type=int)
-    per_page = 10
-    filter_by = request.args.get('filter', 'all')
-
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    # Query với tên cột đúng
-    query = """
-        SELECT 
-            c.idcasi,
-            c.tencasi,
-            c.Ngaysinh as ngaysinh,
-            c.Sunghiep as sunghiep,
-            c.anhdaidien,
-            COUNT(b.idbanthuam) as soluong_banthuam,
-            DATE_FORMAT(c.created_at, '%d/%m/%Y') as ngay_them
-        FROM casi c
-        LEFT JOIN banthuam b ON c.idcasi = b.idcasi
-    """
-
-    # Điều kiện lọc
-    conditions = []
-    if filter_by == 'has_records':
-        conditions.append("b.idbanthuam IS NOT NULL")
-
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
-    query += " GROUP BY c.idcasi"
-
-    # Sắp xếp
-    if filter_by == 'newest':
-        query += " ORDER BY c.created_at DESC"
-    elif filter_by == 'oldest':
-        query += " ORDER BY c.created_at ASC"
-    else:
-        query += " ORDER BY c.tencasi ASC"
-
-    # Phân trang
-    query += f" LIMIT {per_page} OFFSET {(page - 1) * per_page}"
-
-    print("DEBUG - Query:", query)  # Thêm dòng này để debug
-    
-    cursor.execute(query)
-    casi_list = cursor.fetchall()
-
-    print("DEBUG - Data:", casi_list)  # Thêm dòng này để debug
-
-    # Đếm tổng số
-    count_query = "SELECT COUNT(*) as total FROM casi c"
-    if conditions:
-        count_query += " WHERE " + " AND ".join(conditions)
-    
-    cursor.execute(count_query)
-    total = cursor.fetchone()['total']
-    total_pages = (total + per_page - 1) // per_page
-
-    cursor.close()
-    conn.close()
-
-    return render_template('casi_list.html',
-                         casi_list=casi_list,
-                         page=page,
-                         per_page=per_page,
-                         total_pages=total_pages,
-                         filter_by=filter_by)
-
-@app.route('/api/casi/<int:id>', methods=['DELETE'])
-@csrf.exempt  # Thêm dòng này để tránh lỗi CSRF
-def delete_casi(id):
-    conn = None
-    cursor = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)  # SỬA: dùng dictionary=True
+        # Get form data
+        tencasi = request.form.get('tencasi', '').strip()
+        ngaysinh = request.form.get('ngaysinh')
+        sunghiep = request.form.get('sunghiep', '').strip()
         
-        # Kiểm tra ca sĩ có tồn tại không
-        cursor.execute("SELECT * FROM casi WHERE idcasi = %s", (id,))
-        casi = cursor.fetchone()
+        # Validate
+        if not tencasi:
+            flash('Tên ca sĩ không được để trống', 'danger')
+            return redirect(url_for('add_casi'))
         
-        if not casi:
-            return jsonify({
-                "success": False,
-                "message": "Ca sĩ không tồn tại"
-            }), 404
+        # Handle image upload
+        anhdaidien_path = None
+        if 'anhdaidien' in request.files:
+            file = request.files['anhdaidien']
+            if file and file.filename:
+                if not allowed_image(file.filename):
+                    flash('Định dạng ảnh không hợp lệ. Chỉ chấp nhận: PNG, JPG, JPEG, GIF', 'danger')
+                    return redirect(url_for('add_casi'))
+                
+                ext = file.filename.rsplit('.', 1)[1].lower()
+                filename = secure_filename(f"casi_{int(datetime.now().timestamp())}.{ext}")
+                save_path = os.path.join(Config.SINGER_IMAGE_FOLDER, filename)
+                
+                file.save(save_path)
+                anhdaidien_path = filename
         
-        # Kiểm tra xem có bản thu âm không
-        cursor.execute("SELECT COUNT(*) as count FROM banthuam WHERE idcasi = %s", (id,))
-        result = cursor.fetchone()
-        count = result['count'] if result else 0
+        # Insert into database
+        cursor.execute("""
+            INSERT INTO casi (tencasi, Ngaysinh, Sunghiep, anhdaidien)
+            VALUES (%s, %s, %s, %s)
+        """, (tencasi, ngaysinh, sunghiep, anhdaidien_path))
         
-        if count > 0:
-            return jsonify({
-                "success": False,
-                "message": "Không thể xóa ca sĩ đã có bản thu âm"
-            }), 400
-        
-        # Xóa file ảnh nếu có
-        if casi['anhdaidien']:
-            file_path = os.path.join(app.config['SINGER_IMAGE_FOLDER'], casi['anhdaidien'])
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                print(f"Đã xóa file ảnh: {file_path}")
-        
-        # Xóa ca sĩ
-        cursor.execute("DELETE FROM casi WHERE idcasi = %s", (id,))
         conn.commit()
-        
-        return jsonify({
-            "success": True,
-            "message": "Xóa ca sĩ thành công"
-        })
-        
-    except mysql.connector.Error as err:
-        print(f"Lỗi MySQL: {err}")
-        if conn:
-            conn.rollback()
-        return jsonify({
-            "success": False,
-            "message": f"Lỗi database: {str(err)}"
-        }), 500
+        flash('Thêm ca sĩ thành công!', 'success')
+        return redirect(url_for('casi_list'))
         
     except Exception as e:
-        print(f"Lỗi: {str(e)}")
-        if conn:
-            conn.rollback()
-        return jsonify({
-            "success": False,
-            "message": f"Lỗi hệ thống: {str(e)}"
-        }), 500
+        conn.rollback()
+        flash(f'Lỗi khi thêm ca sĩ: {str(e)}', 'danger')
+        return redirect(url_for('add_casi'))
         
     finally:
-        if cursor:
-            cursor.close()
-        if conn and conn.is_connected():
-            conn.close()
+        cursor.close()
+        conn.close()
 
-# THÊM MỚI: Route hiển thị form chỉnh sửa
+
 @app.route('/casi/edit/<int:idcasi>', methods=['GET'])
 def edit_casi_form(idcasi):
+    """Edit singer form"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    if not conn:
+        flash('Database connection error', 'danger')
+        return redirect(url_for('casi_list'))
     
+    cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute("""
             SELECT 
@@ -1020,15 +1531,19 @@ def edit_casi_form(idcasi):
         cursor.close()
         conn.close()
 
-# THÊM MỚI: Route xử lý cập nhật
+
 @app.route('/casi/edit/<int:idcasi>', methods=['POST'])
 @csrf.exempt
 def edit_casi(idcasi):
+    """Update singer"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    if not conn:
+        flash('Database connection error', 'danger')
+        return redirect(url_for('edit_casi_form', idcasi=idcasi))
     
+    cursor = conn.cursor(dictionary=True)
     try:
-        # Lấy thông tin ca sĩ hiện tại
+        # Get current singer
         cursor.execute("SELECT * FROM casi WHERE idcasi = %s", (idcasi,))
         casi = cursor.fetchone()
         
@@ -1036,7 +1551,7 @@ def edit_casi(idcasi):
             flash('Ca sĩ không tồn tại', 'danger')
             return redirect(url_for('casi_list'))
         
-        # Lấy dữ liệu từ form
+        # Get form data
         tencasi = request.form.get('tencasi', '').strip()
         ngaysinh = request.form.get('ngaysinh')
         sunghiep = request.form.get('sunghiep', '').strip()
@@ -1045,13 +1560,13 @@ def edit_casi(idcasi):
             flash('Tên ca sĩ không được để trống', 'danger')
             return redirect(url_for('edit_casi_form', idcasi=idcasi))
         
-        # Xử lý ảnh
+        # Handle image
         anhdaidien_path = casi['anhdaidien']
         remove_avatar = request.form.get('remove_avatar') == 'true'
         
         if remove_avatar:
             if casi['anhdaidien']:
-                old_file = os.path.join(app.config['SINGER_IMAGE_FOLDER'], casi['anhdaidien'])
+                old_file = os.path.join(Config.SINGER_IMAGE_FOLDER, casi['anhdaidien'])
                 if os.path.exists(old_file):
                     os.remove(old_file)
             anhdaidien_path = None
@@ -1065,17 +1580,17 @@ def edit_casi(idcasi):
                 
                 ext = file.filename.rsplit('.', 1)[1].lower()
                 filename = secure_filename(f"casi_{idcasi}_{int(datetime.now().timestamp())}.{ext}")
-                save_path = os.path.join(app.config['SINGER_IMAGE_FOLDER'], filename)
+                save_path = os.path.join(Config.SINGER_IMAGE_FOLDER, filename)
                 
                 file.save(save_path)
                 anhdaidien_path = filename
                 
                 if casi['anhdaidien'] and not remove_avatar:
-                    old_file = os.path.join(app.config['SINGER_IMAGE_FOLDER'], casi['anhdaidien'])
+                    old_file = os.path.join(Config.SINGER_IMAGE_FOLDER, casi['anhdaidien'])
                     if os.path.exists(old_file):
                         os.remove(old_file)
         
-        # Cập nhật database
+        # Update database
         cursor.execute("""
             UPDATE casi 
             SET tencasi = %s, 
@@ -1097,73 +1612,70 @@ def edit_casi(idcasi):
         cursor.close()
         conn.close()
 
-@app.route('/casi/add', methods=['GET', 'POST'])
+
+@app.route('/bannhac/add', methods=['GET', 'POST'])
 @csrf.exempt
-def add_casi():
-    if request.method == 'GET':
-        # Hiển thị form thêm mới
-        return render_template('casi_add.html')
+def add_bannhac():
+    """Add new song"""
+    conn = get_db_connection()
+    if not conn:
+        flash('Database connection error', 'danger')
+        return redirect(url_for('bannhac_list'))
     
-    elif request.method == 'POST':
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Get composers for dropdown
+        cursor.execute("SELECT idnhacsi, tennhacsi FROM nhacsi ORDER BY tennhacsi")
+        nhacsi_list = cursor.fetchall()
         
-        try:
-            # Lấy dữ liệu từ form
-            tencasi = request.form.get('tencasi', '').strip()
-            ngaysinh = request.form.get('ngaysinh')
-            sunghiep = request.form.get('sunghiep', '').strip()
-            
-            # Validate dữ liệu
-            if not tencasi:
-                flash('Tên ca sĩ không được để trống', 'danger')
-                return redirect(url_for('add_casi'))
-            
-            # Xử lý ảnh đại diện
-            anhdaidien_path = None
-            if 'anhdaidien' in request.files:
-                file = request.files['anhdaidien']
-                if file and file.filename:
-                    if not allowed_image(file.filename):
-                        flash('Định dạng ảnh không hợp lệ. Chỉ chấp nhận: PNG, JPG, JPEG, GIF', 'danger')
-                        return redirect(url_for('add_casi'))
-                    
-                    # Tạo tên file an toàn
-                    ext = file.filename.rsplit('.', 1)[1].lower()
-                    filename = secure_filename(f"casi_{int(datetime.now().timestamp())}.{ext}")
-                    save_path = os.path.join(app.config['SINGER_IMAGE_FOLDER'], filename)
-                    
-                    # Lưu file
-                    file.save(save_path)
-                    anhdaidien_path = filename
-            
-            # Thêm vào database
-            cursor.execute("""
-                INSERT INTO casi (tencasi, Ngaysinh, Sunghiep, anhdaidien)
-                VALUES (%s, %s, %s, %s)
-            """, (tencasi, ngaysinh, sunghiep, anhdaidien_path))
-            
-            conn.commit()
-            flash('Thêm ca sĩ thành công!', 'success')
-            return redirect(url_for('casi_list'))
-            
-        except Exception as e:
-            conn.rollback()
-            flash(f'Lỗi khi thêm ca sĩ: {str(e)}', 'danger')
-            return redirect(url_for('add_casi'))
-            
-        finally:
-            cursor.close()
-            conn.close()
+        if request.method == 'GET':
+            return render_template('bannhac_add.html', nhacsi_list=nhacsi_list)
+        
+        # POST request
+        tenbannhac = request.form.get('tenbannhac', '').strip()
+        theloai = request.form.get('theloai', '').strip()
+        idnhacsi = request.form.get('idnhacsi')
+        
+        # Validate
+        if not tenbannhac:
+            flash('Tên bài hát không được để trống', 'danger')
+            return redirect(url_for('add_bannhac'))
+        
+        if not idnhacsi:
+            flash('Vui lòng chọn nhạc sĩ', 'danger')
+            return redirect(url_for('add_bannhac'))
+        
+        # Insert
+        cursor.execute("""
+            INSERT INTO bannhac (tenbannhac, theloai, idnhacsi)
+            VALUES (%s, %s, %s)
+        """, (tenbannhac, theloai, idnhacsi))
+        
+        conn.commit()
+        flash('Thêm bài hát thành công!', 'success')
+        return redirect(url_for('bannhac_list'))
+        
+    except Exception as e:
+        conn.rollback()
+        flash(f'Lỗi: {str(e)}', 'danger')
+        return redirect(url_for('add_bannhac'))
+    finally:
+        cursor.close()
+        conn.close()
+
 
 @app.route('/bannhac/edit/<int:idbannhac>', methods=['GET', 'POST'])
 @csrf.exempt
 def edit_bannhac(idbannhac):
+    """Edit song"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    if not conn:
+        flash('Database connection error', 'danger')
+        return redirect(url_for('bannhac_list'))
     
+    cursor = conn.cursor(dictionary=True)
     try:
-        # Lấy thông tin bài hát hiện tại
+        # Get current song
         cursor.execute("""
             SELECT b.*, n.tennhacsi 
             FROM bannhac b
@@ -1176,434 +1688,170 @@ def edit_bannhac(idbannhac):
             flash('Không tìm thấy bài hát!', 'danger')
             return redirect(url_for('bannhac_list'))
         
-        if request.method == 'POST':
-            # Lấy dữ liệu từ form
-            tenbannhac = request.form.get('tenbannhac', '').strip()
-            theloai = request.form.get('theloai', '').strip()
-            idnhacsi = request.form.get('idnhacsi')
+        if request.method == 'GET':
+            # Get composers for dropdown
+            cursor.execute("SELECT idnhacsi, tennhacsi FROM nhacsi ORDER BY tennhacsi")
+            nhacsi_list = cursor.fetchall()
             
-            # Validate dữ liệu
-            if not tenbannhac:
-                flash('Tên bài hát không được để trống', 'danger')
-                return redirect(url_for('edit_bannhac', idbannhac=idbannhac))
-            
-            if not idnhacsi:
-                flash('Vui lòng chọn nhạc sĩ', 'danger')
-                return redirect(url_for('edit_bannhac', idbannhac=idbannhac))
-            
-            # Cập nhật database
-            cursor.execute("""
-                UPDATE bannhac 
-                SET tenbannhac = %s, 
-                    theloai = %s, 
-                    idnhacsi = %s
-                WHERE idbannhac = %s
-            """, (tenbannhac, theloai, idnhacsi, idbannhac))
-            
-            conn.commit()
-            flash('Cập nhật bài hát thành công!', 'success')
-            return redirect(url_for('bannhac_detail', id=idbannhac))
+            return render_template('bannhac_edit.html', 
+                                 bannhac=bannhac,
+                                 nhacsi_list=nhacsi_list)
         
-        # Lấy danh sách nhạc sĩ cho dropdown
-        cursor.execute("SELECT idnhacsi, tennhacsi FROM nhacsi ORDER BY tennhacsi")
-        nhacsi_list = cursor.fetchall()
+        # POST request
+        tenbannhac = request.form.get('tenbannhac', '').strip()
+        theloai = request.form.get('theloai', '').strip()
+        idnhacsi = request.form.get('idnhacsi')
         
-        return render_template('bannhac_edit.html', 
-                             bannhac=bannhac,
-                             nhacsi_list=nhacsi_list)
+        # Validate
+        if not tenbannhac:
+            flash('Tên bài hát không được để trống', 'danger')
+            return redirect(url_for('edit_bannhac', idbannhac=idbannhac))
+        
+        if not idnhacsi:
+            flash('Vui lòng chọn nhạc sĩ', 'danger')
+            return redirect(url_for('edit_bannhac', idbannhac=idbannhac))
+        
+        # Update
+        cursor.execute("""
+            UPDATE bannhac 
+            SET tenbannhac = %s, 
+                theloai = %s, 
+                idnhacsi = %s
+            WHERE idbannhac = %s
+        """, (tenbannhac, theloai, idnhacsi, idbannhac))
+        
+        conn.commit()
+        flash('Cập nhật bài hát thành công!', 'success')
+        return redirect(url_for('bannhac_detail', id=idbannhac))
         
     except Exception as e:
+        conn.rollback()
         flash(f'Lỗi: {str(e)}', 'danger')
         return redirect(url_for('bannhac_list'))
     finally:
         cursor.close()
         conn.close()
 
-@app.route('/api/bannhac/<int:id>', methods=['DELETE'])
-@csrf.exempt
-def delete_bannhac_api(id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    try:
-        # Kiểm tra bài hát có tồn tại không
-        cursor.execute("SELECT * FROM bannhac WHERE idbannhac = %s", (id,))
-        bannhac = cursor.fetchone()
-        
-        if not bannhac:
-            return jsonify({
-                "success": False,
-                "message": "Bài hát không tồn tại"
-            }), 404
-        
-        # Kiểm tra xem có bản thu âm không
-        cursor.execute("SELECT COUNT(*) as count FROM banthuam WHERE idbannhac = %s", (id,))
-        result = cursor.fetchone()
-        count = result['count'] if result else 0
-        
-        if count > 0:
-            return jsonify({
-                "success": False,
-                "message": "Không thể xóa bài hát đã có bản thu âm"
-            }), 400
-        
-        # Xóa bài hát
-        cursor.execute("DELETE FROM bannhac WHERE idbannhac = %s", (id,))
-        conn.commit()
-        
-        return jsonify({
-            "success": True,
-            "message": "Xóa bài hát thành công"
-        })
-        
-    except Exception as e:
-        conn.rollback()
-        return jsonify({
-            "success": False,
-            "message": str(e)
-        }), 500
-    finally:
-        cursor.close()
-        conn.close()
 
-@app.route('/bannhac/add', methods=['GET', 'POST'])
+@app.route('/banthuam/add', methods=['GET', 'POST'])
 @csrf.exempt
-def add_bannhac():
+def add_banthuam():
+    """Add new recording"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    if not conn:
+        flash('Database connection error', 'danger')
+        return redirect(url_for('banthuam_list'))
     
+    cursor = conn.cursor(dictionary=True)
     try:
-        # Lấy danh sách nhạc sĩ cho dropdown
-        cursor.execute("SELECT idnhacsi, tennhacsi FROM nhacsi ORDER BY tennhacsi")
-        nhacsi_list = cursor.fetchall()
-        
         if request.method == 'GET':
-            return render_template('bannhac_add.html', nhacsi_list=nhacsi_list)
-        
-        elif request.method == 'POST':
-            # Lấy dữ liệu từ form
-            tenbannhac = request.form.get('tenbannhac', '').strip()
-            theloai = request.form.get('theloai', '').strip()
-            idnhacsi = request.form.get('idnhacsi')
-            
-            # Validate dữ liệu
-            if not tenbannhac:
-                flash('Tên bài hát không được để trống', 'danger')
-                return redirect(url_for('add_bannhac'))
-            
-            if not idnhacsi:
-                flash('Vui lòng chọn nhạc sĩ', 'danger')
-                return redirect(url_for('add_bannhac'))
-            
-            # Thêm vào database
+            # Get songs for dropdown
             cursor.execute("""
-                INSERT INTO bannhac (tenbannhac, theloai, idnhacsi)
-                VALUES (%s, %s, %s)
-            """, (tenbannhac, theloai, idnhacsi))
+                SELECT b.idbannhac, b.tenbannhac, n.tennhacsi 
+                FROM bannhac b
+                JOIN nhacsi n ON b.idnhacsi = n.idnhacsi
+                ORDER BY b.tenbannhac
+            """)
+            songs = cursor.fetchall()
             
-            conn.commit()
-            flash('Thêm bài hát thành công!', 'success')
-            return redirect(url_for('bannhac_list'))
+            # Get artists for dropdown
+            cursor.execute("SELECT idcasi, tencasi FROM casi ORDER BY tencasi")
+            artists = cursor.fetchall()
             
-    except Exception as e:
-        flash(f'Lỗi: {str(e)}', 'danger')
-        return redirect(url_for('add_bannhac'))
-    finally:
-        cursor.close()
-        conn.close()
-@app.route('/bannhac/<int:id>')
-def bannhac_detail(id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # Lấy thông tin cơ bản bản nhạc
-    cursor.execute("""
-        SELECT 
-            b.*,
-	    b.idnhacsi,
-            n.tennhacsi,
-            DATE_FORMAT(b.created_at, '%d/%m/%Y') as ngay_them
-        FROM bannhac b
-        JOIN nhacsi n ON b.idnhacsi = n.idnhacsi
-        WHERE b.idbannhac = %s
-    """, (id,))
-    bannhac = cursor.fetchone()
-    
-    if not bannhac:
-        return render_template('404.html'), 404
-    
-    # Lấy danh sách bản thu âm
-    cursor.execute("""
-        SELECT 
-            ba.idbanthuam,
-            c.idcasi,
-            c.tencasi,
-            DATE_FORMAT(ba.created_at, '%d/%m/%Y') as ngay_them
-        FROM banthuam ba
-        JOIN casi c ON ba.idcasi = c.idcasi
-        WHERE ba.idbannhac = %s
-    """, (id,))
-    banthuam = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
-    return render_template('bannhac_detail.html',
-                         bannhac=bannhac,
-                         banthuam=banthuam)
-
-@app.route('/api/bannhac/<int:id>', methods=['DELETE'])
-def delete_bannhac(id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # Kiểm tra xem có bản thu âm nào không
-        cursor.execute("SELECT COUNT(*) FROM banthuam WHERE idbannhac = %s", (id,))
-        if cursor.fetchone()[0] > 0:
-            return jsonify({
-                "success": False,
-                "message": "Không thể xóa bản nhạc đã có bản thu âm"
-            })
+            return render_template('banthuam_add.html', 
+                                 songs=songs, 
+                                 artists=artists,
+                                 now=datetime.now())
         
-        cursor.execute("DELETE FROM bannhac WHERE idbannhac = %s", (id,))
+        # POST request
+        print("Form data:", request.form)
+        print("Files:", request.files)
+        
+        # Get form data
+        idbannhac = request.form.get('idbannhac')
+        idcasi = request.form.get('idcasi')
+        ngaythuam = request.form.get('ngaythuam')
+        thoiluong = request.form.get('thoiluong')
+        lyrics = request.form.get('lyrics', '').strip()
+        ghichu = request.form.get('ghichu', '').strip()
+        
+        # Validate
+        errors = []
+        if not idbannhac:
+            errors.append("Thiếu bài hát")
+        if not idcasi:
+            errors.append("Thiếu ca sĩ")
+        
+        if errors:
+            flash(f'Lỗi: {", ".join(errors)}', 'danger')
+            return redirect(url_for('add_banthuam'))
+        
+        # Handle file upload
+        file_path = None
+        if 'audio_file' in request.files:
+            file = request.files['audio_file']
+            if file and file.filename:
+                ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+                
+                if ext not in Config.ALLOWED_AUDIO:
+                    flash('Định dạng file không hợp lệ. Chỉ chấp nhận: MP3, WAV, AAC, M4A', 'danger')
+                    return redirect(url_for('add_banthuam'))
+                
+                # Check size
+                file.seek(0, 2)
+                size = file.tell()
+                file.seek(0)
+                
+                if size > Config.MAX_AUDIO_SIZE:
+                    flash('File âm thanh không được vượt quá 20MB', 'danger')
+                    return redirect(url_for('add_banthuam'))
+                
+                # Save file
+                filename = secure_filename(f"recording_{int(datetime.now().timestamp())}.{ext}")
+                save_path = os.path.join(Config.RECORDING_FOLDER, filename)
+                
+                os.makedirs(Config.RECORDING_FOLDER, exist_ok=True)
+                file.save(save_path)
+                file_path = filename
+                print(f"File saved: {save_path}")
+        
+        if not file_path:
+            flash('Vui lòng chọn file âm thanh', 'danger')
+            return redirect(url_for('add_banthuam'))
+        
+        # Insert into database
+        cursor.execute("""
+            INSERT INTO banthuam 
+            (idbannhac, idcasi, ngaythuam, thoiluong, lyrics, ghichu, file_path)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (idbannhac, idcasi, ngaythuam, thoiluong, lyrics, ghichu, file_path))
+        
         conn.commit()
-        return jsonify({"success": True})
-    except Exception as e:
-        conn.rollback()
-        return jsonify({
-            "success": False,
-            "message": str(e)
-        })
-    finally:
-        cursor.close()
-        conn.close()
-
-@app.route('/api/banthuam/<int:id>', methods=['DELETE'])
-def delete_banthuam(id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute("DELETE FROM banthuam WHERE idbanthuam = %s", (id,))
-        conn.commit()
-        return jsonify({"success": True})
-    except Exception as e:
-        conn.rollback()
-        return jsonify({
-            "success": False,
-            "message": str(e)
-        })
-    finally:
-        cursor.close()
-        conn.close()
-
-@app.route('/api/bannhac/noibat')
-def get_featured_songs():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    cursor.execute("""
-        SELECT 
-            bn.idbannhac,
-            bn.tenbannhac,
-            bn.idnhacsi,
-            ns.tennhacsi,
-            COUNT(ba.idbanthuam) as soluong_banthuam,
-            DATE_FORMAT(bn.created_at, '%d/%m/%Y') as ngay_them
-        FROM bannhac bn
-        LEFT JOIN banthuam ba ON bn.idbannhac = ba.idbannhac
-        LEFT JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
-        GROUP BY bn.idbannhac
-        ORDER BY soluong_banthuam DESC
-        LIMIT 4
-    """)
-    data = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
-    return jsonify(data)
-
-@app.route('/bannhac')
-def bannhac_list():
-    page = request.args.get('page', 1, type=int)
-    per_page = 10
-    nhacsi_id = request.args.get('nhacsi', None)
-    sort_by = request.args.get('sort', 'newest')
-
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    # Base query
-    query = """
-        SELECT 
-            b.idbannhac,
-            b.tenbannhac,
-            b.theloai,
-            b.idnhacsi,
-            n.tennhacsi,
-            COUNT(ba.idbanthuam) as soluong_banthuam,
-            DATE_FORMAT(b.created_at, '%d/%m/%Y') as ngay_them
-        FROM bannhac b
-        JOIN nhacsi n ON b.idnhacsi = n.idnhacsi
-        LEFT JOIN banthuam ba ON b.idbannhac = ba.idbannhac
-    """
-
-    # Điều kiện lọc
-    conditions = []
-    if nhacsi_id:
-        conditions.append(f"b.idnhacsi = {nhacsi_id}")
-
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
-    query += " GROUP BY b.idbannhac"
-
-    # Sắp xếp
-    if sort_by == 'newest':
-        query += " ORDER BY b.created_at DESC"
-    elif sort_by == 'oldest':
-        query += " ORDER BY b.created_at ASC"
-    elif sort_by == 'name_asc':
-        query += " ORDER BY b.tenbannhac ASC"
-    elif sort_by == 'name_desc':
-        query += " ORDER BY b.tenbannhac DESC"
-    elif sort_by == 'popular':
-        query += " ORDER BY soluong_banthuam DESC"
-
-    # Phân trang
-    query += f" LIMIT {per_page} OFFSET {(page - 1) * per_page}"
-
-    cursor.execute(query)
-    bannhac_list = cursor.fetchall()
-
-    # Lấy danh sách nhạc sĩ cho filter
-    cursor.execute("SELECT idnhacsi, tennhacsi FROM nhacsi ORDER BY tennhacsi")
-    nhacsi_list = cursor.fetchall()
-
-    # Lấy tổng số bản ghi
-    count_query = "SELECT COUNT(*) as total FROM bannhac"
-    if conditions:
-        count_query += " WHERE " + " AND ".join(conditions)
-    
-    cursor.execute(count_query)
-    total = cursor.fetchone()['total']
-    total_pages = (total + per_page - 1) // per_page
-
-    cursor.close()
-    conn.close()
-
-    return render_template('bannhac_list.html',
-                         bannhac_list=bannhac_list,
-                         nhacsi_list=nhacsi_list,
-                         page=page,
-                         per_page=per_page,
-                         total_pages=total_pages,
-                         nhacsi_id=nhacsi_id,
-                         sort_by=sort_by)
-
-@app.route('/api/banthuam/noibat')
-def get_featured_recordings():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    cursor.execute("""
-        SELECT 
-            ba.idbanthuam,
-            ba.ngaythuam,
-            b.idbannhac,
-            b.tenbannhac,
-            c.idcasi,
-            c.tencasi,
-            COUNT(f.id) as luot_thich,
-            DATE_FORMAT(ba.created_at, '%d/%m/%Y') as ngay_them
-        FROM banthuam ba
-        JOIN bannhac b ON ba.idbannhac = b.idbannhac
-        JOIN casi c ON ba.idcasi = c.idcasi
-        LEFT JOIN favorites f ON ba.idbanthuam = f.idbanthuam
-        GROUP BY ba.idbanthuam
-        ORDER BY luot_thich DESC, ba.created_at DESC
-        LIMIT 6
-    """)
-    data = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
-    return jsonify(data)
-
-
-
-@app.route('/api/banthuam', methods=['GET'])
-def get_recordings():
-    song_id = request.args.get('bannhac')
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    if song_id:
-        query = """
-        SELECT bt.idbanthuam, bt.ngaythu, cs.tencasi
-        FROM banthuam bt
-        JOIN casi cs ON bt.idcasi = cs.idcasi
-        WHERE bt.idbannhac = %s
-        """
-        cursor.execute(query, (song_id,))
-    else:
-        cursor.execute("SELECT * FROM banthuam LIMIT 50")
-    
-    recordings = cursor.fetchall()
-    
-    # Format dates
-    for rec in recordings:
-        if 'ngaythu' in rec and rec['ngaythu']:
-            rec['ngaythu'] = rec['ngaythu'].isoformat()
-    
-    cursor.close()
-    conn.close()
-    
-    return jsonify(recordings)
-
-@app.route('/banthuam/delete/<int:recording_id>', methods=['POST'])
-@csrf.exempt
-def delete_recording(recording_id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    try:
-        # Lấy thông tin file để xóa
-        cursor.execute("SELECT file_path FROM banthuam WHERE idbanthuam = %s", (recording_id,))
-        recording = cursor.fetchone()
-        
-        # Xóa khỏi database
-        cursor.execute("DELETE FROM banthuam WHERE idbanthuam = %s", (recording_id,))
-        conn.commit()
-        
-        # Xóa file vật lý nếu có
-        if recording and recording['file_path']:
-            file_path = os.path.join('static/recordings', recording['file_path'])
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        
-        flash('Xóa bản thu âm thành công!', 'success')
+        flash('✅ Thêm bản thu âm thành công!', 'success')
+        return redirect(url_for('banthuam_list'))
         
     except Exception as e:
         conn.rollback()
-        flash(f'Lỗi khi xóa: {str(e)}', 'danger')
+        print(f"Error: {str(e)}")
+        flash(f'❌ Lỗi: {str(e)}', 'danger')
+        return redirect(url_for('add_banthuam'))
     finally:
         cursor.close()
         conn.close()
-    
-    return redirect(url_for('banthuam_list'))
+
 
 @app.route('/banthuam/edit/<int:idbanthuam>', methods=['GET', 'POST'])
 @csrf.exempt
 def edit_banthuam(idbanthuam):
+    """Edit recording"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    if not conn:
+        flash('Database connection error', 'danger')
+        return redirect(url_for('banthuam_list'))
     
+    cursor = conn.cursor(dictionary=True)
     try:
-        # Lấy thông tin bản thu âm hiện tại
+        # Get current recording
         cursor.execute("""
             SELECT bt.*, 
                    cs.tencasi,
@@ -1622,7 +1870,7 @@ def edit_banthuam(idbanthuam):
             return redirect(url_for('banthuam_list'))
         
         if request.method == 'GET':
-            # Lấy danh sách bài hát và ca sĩ cho dropdown
+            # Get songs for dropdown
             cursor.execute("""
                 SELECT b.idbannhac, b.tenbannhac, n.tennhacsi 
                 FROM bannhac b
@@ -1631,6 +1879,7 @@ def edit_banthuam(idbanthuam):
             """)
             songs = cursor.fetchall()
             
+            # Get artists for dropdown
             cursor.execute("SELECT idcasi, tencasi FROM casi ORDER BY tencasi")
             artists = cursor.fetchall()
             
@@ -1639,584 +1888,199 @@ def edit_banthuam(idbanthuam):
                                  songs=songs,
                                  artists=artists)
         
-        elif request.method == 'POST':
-            # Lấy dữ liệu từ form
-            idbannhac = request.form.get('idbannhac')
-            idcasi = request.form.get('idcasi')
-            ngaythuam = request.form.get('ngaythuam')
-            thoiluong = request.form.get('thoiluong')
-            lyrics = request.form.get('lyrics', '').strip()
-            ghichu = request.form.get('ghichu', '').strip()
-            
-            # Validate dữ liệu
-            if not idbannhac or not idcasi:
-                flash('Vui lòng chọn bài hát và ca sĩ', 'danger')
-                return redirect(url_for('edit_banthuam', idbanthuam=idbanthuam))
-            
-            # Xử lý file upload nếu có
-            file_path = banthuam['file_path']  # Giữ file cũ
-            if 'audio_file' in request.files:
-                file = request.files['audio_file']
-                if file and file.filename:
-                    if not allowed_file(file.filename):
-                        flash('Định dạng file không hợp lệ. Chỉ chấp nhận MP3, WAV, AAC', 'danger')
-                        return redirect(url_for('edit_banthuam', idbanthuam=idbanthuam))
-                    
-                    # Tạo tên file mới
-                    ext = file.filename.rsplit('.', 1)[1].lower()
-                    filename = secure_filename(f"recording_{idbanthuam}_{int(datetime.now().timestamp())}.{ext}")
-                    save_path = os.path.join('static/recordings', filename)
-                    
-                    # Tạo thư mục nếu chưa tồn tại
-                    os.makedirs('static/recordings', exist_ok=True)
-                    
-                    # Lưu file mới
-                    file.save(save_path)
-                    
-                    # Xóa file cũ nếu có
-                    if banthuam['file_path']:
-                        old_file = os.path.join('static/recordings', banthuam['file_path'])
-                        if os.path.exists(old_file):
-                            os.remove(old_file)
-                    
-                    file_path = filename
-            
-            # Cập nhật database
-            cursor.execute("""
-                UPDATE banthuam 
-                SET idbannhac = %s,
-                    idcasi = %s,
-                    ngaythuam = %s,
-                    thoiluong = %s,
-                    lyrics = %s,
-                    ghichu = %s,
-                    file_path = %s
-                WHERE idbanthuam = %s
-            """, (idbannhac, idcasi, ngaythuam, thoiluong, lyrics, ghichu, file_path, idbanthuam))
-            
-            conn.commit()
-            flash('Cập nhật bản thu âm thành công!', 'success')
-            return redirect(url_for('recording_detail', recording_id=idbanthuam))
-            
+        # POST request
+        idbannhac = request.form.get('idbannhac')
+        idcasi = request.form.get('idcasi')
+        ngaythuam = request.form.get('ngaythuam')
+        thoiluong = request.form.get('thoiluong')
+        lyrics = request.form.get('lyrics', '').strip()
+        ghichu = request.form.get('ghichu', '').strip()
+        
+        # Validate
+        if not idbannhac or not idcasi:
+            flash('Vui lòng chọn bài hát và ca sĩ', 'danger')
+            return redirect(url_for('edit_banthuam', idbanthuam=idbanthuam))
+        
+        # Handle file upload
+        file_path = banthuam['file_path']
+        if 'audio_file' in request.files:
+            file = request.files['audio_file']
+            if file and file.filename:
+                if not allowed_audio(file.filename):
+                    flash('Định dạng file không hợp lệ. Chỉ chấp nhận MP3, WAV, AAC', 'danger')
+                    return redirect(url_for('edit_banthuam', idbanthuam=idbanthuam))
+                
+                ext = file.filename.rsplit('.', 1)[1].lower()
+                filename = secure_filename(f"recording_{idbanthuam}_{int(datetime.now().timestamp())}.{ext}")
+                save_path = os.path.join(Config.RECORDING_FOLDER, filename)
+                
+                os.makedirs(Config.RECORDING_FOLDER, exist_ok=True)
+                file.save(save_path)
+                
+                # Delete old file
+                if banthuam['file_path']:
+                    old_file = os.path.join(Config.RECORDING_FOLDER, banthuam['file_path'])
+                    if os.path.exists(old_file):
+                        os.remove(old_file)
+                
+                file_path = filename
+        
+        # Update database
+        cursor.execute("""
+            UPDATE banthuam 
+            SET idbannhac = %s,
+                idcasi = %s,
+                ngaythuam = %s,
+                thoiluong = %s,
+                lyrics = %s,
+                ghichu = %s,
+                file_path = %s
+            WHERE idbanthuam = %s
+        """, (idbannhac, idcasi, ngaythuam, thoiluong, lyrics, ghichu, file_path, idbanthuam))
+        
+        conn.commit()
+        flash('Cập nhật bản thu âm thành công!', 'success')
+        return redirect(url_for('recording_detail', recording_id=idbanthuam))
+        
     except Exception as e:
         conn.rollback()
         flash(f'Lỗi: {str(e)}', 'danger')
         return redirect(url_for('edit_banthuam', idbanthuam=idbanthuam))
     finally:
         cursor.close()
-        conn.close()    
+        conn.close()
 
-# Hàm lấy bản thu liên quan
-def get_related_recordings(song_id, exclude_id):
+
+@app.route('/banthuam/delete/<int:recording_id>', methods=['POST'])
+@csrf.exempt
+def delete_recording(recording_id):
+    """Delete recording"""
     conn = get_db_connection()
     if not conn:
-        return []
+        flash('Database connection error', 'danger')
+        return redirect(url_for('banthuam_list'))
     
+    cursor = conn.cursor(dictionary=True)
     try:
-        cursor = conn.cursor(dictionary=True)
-        query = """
-        SELECT bt.idbanthuam, bt.ngaythuam, cs.tencasi
-        FROM banthuam bt
-        JOIN casi cs ON bt.idcasi = cs.idcasi
-        WHERE bt.idbannhac = %s AND bt.idbanthuam != %s
-        LIMIT 5
-        """
-        cursor.execute(query, (song_id, exclude_id))
-        return cursor.fetchall()
-    finally:
-        if conn.is_connected():
-            cursor.close()
-            conn.close()
-
-# Route xem chi tiết
-@app.route('/banthuam/detail/<int:recording_id>')
-def recording_detail(recording_id):
-    conn = get_db_connection()
-    if not conn:
-        return "Database connection error", 500
-    
-    try:
-        cursor = conn.cursor(dictionary=True)
-        # SỬA: Thêm các trường cần thiết
-        query = """
-        SELECT 
-            bt.idbanthuam,
-            bt.idbannhac,
-            bt.idcasi,
-            bt.ngaythuam as ngaythu,
-            bt.thoiluong,
-            bt.file_path,
-            bt.ghichu,
-            bt.lyrics,
-            cs.tencasi,
-            cs.idcasi,
-            bn.tenbannhac,
-            bn.idnhacsi,
-            ns.tennhacsi
-        FROM banthuam bt
-        JOIN casi cs ON bt.idcasi = cs.idcasi
-        JOIN bannhac bn ON bt.idbannhac = bn.idbannhac
-        JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
-        WHERE bt.idbanthuam = %s
-        """
-        cursor.execute(query, (recording_id,))
+        # Get file info
+        cursor.execute("SELECT file_path FROM banthuam WHERE idbanthuam = %s", (recording_id,))
         recording = cursor.fetchone()
         
-        if not recording:
-            return "Bản thu không tồn tại", 404
+        # Delete from database
+        cursor.execute("DELETE FROM banthuam WHERE idbanthuam = %s", (recording_id,))
+        conn.commit()
         
-        # Lấy bản thu liên quan (cùng bài hát)
-        cursor.execute("""
-            SELECT 
-                bt.idbanthuam,
-                cs.tencasi,
-                bt.ngaythuam as ngaythu,
-                bt.thoiluong
-            FROM banthuam bt
-            JOIN casi cs ON bt.idcasi = cs.idcasi
-            WHERE bt.idbannhac = %s AND bt.idbanthuam != %s
-            LIMIT 5
-        """, (recording['idbannhac'], recording_id))
-        related = cursor.fetchall()
+        # Delete file
+        if recording and recording['file_path']:
+            file_path = os.path.join(Config.RECORDING_FOLDER, recording['file_path'])
+            if os.path.exists(file_path):
+                os.remove(file_path)
         
-        return render_template(
-            'banthuam_detail.html',
-            recording=recording,
-            related_recordings=related
-        )
-    except Exception as e:
-        print(f"Error: {e}")
-        return "Internal server error", 500
-    finally:
-        if conn.is_connected():
-            cursor.close()
-            conn.close()
-            
-
-@app.route('/items')
-def item_list():
-    # Thiết lập phân trang
-    page, per_page, offset = get_page_args(
-        page_parameter='page',
-        per_page_parameter='per_page'
-    )
-    per_page = 10  # Số item mỗi trang
-    
-    # Truy vấn database
-    total = db.session.query(Item).count()
-    items = db.session.query(Item).limit(per_page).offset(offset)
-    
-    # Tạo pagination object
-    pagination = Pagination(
-        page=page,
-        per_page=per_page,
-        total=total,
-        css_framework='bootstrap5'
-    )
-    
-    return render_template('item_list.html', items=items, pagination=pagination)
-
-@app.route('/banthuam')
-def banthuam_list():
-    page = request.args.get('page', 1, type=int)
-    per_page = 10
-    offset = (page - 1) * per_page
-    
-    # Xử lý filter/tìm kiếm
-    search_query = request.args.get('q', '').strip()
-    artist_id = request.args.get('artist', '')
-    sort_option = request.args.get('sort', 'newest')
-    
-    # Xây dựng query
-    query = """
-    SELECT bt.idbanthuam,bt.ngaythuam, bt.thoiluong,
-           cs.idcasi, cs.tencasi,
-           bn.idbannhac, bn.tenbannhac,
-           ns.idnhacsi, ns.tennhacsi
-    FROM banthuam bt
-    JOIN casi cs ON bt.idcasi = cs.idcasi
-    JOIN bannhac bn ON bt.idbannhac = bn.idbannhac
-    JOIN nhacsi ns ON bn.idnhacsi = ns.idnhacsi
-    WHERE 1=1
-    """
-    
-    params = []
-    
-    if search_query:
-        query += " AND (ns.tennhacsi LIKE %s OR bn.tenbannhac LIKE %s OR cs.tencasi LIKE %s)"
-        params.extend([f"%{search_query}%", f"%{search_query}%", f"%{search_query}%"])
-    
-    if artist_id:
-        query += " AND bt.idcasi = %s"
-        params.append(artist_id)
-    
-    # Sắp xếp
-    if sort_option == 'newest':
-        query += " ORDER BY bt.ngaythuam DESC"
-    elif sort_option == 'oldest':
-        query += " ORDER BY bt.ngaythuam ASC"
-    elif sort_option == 'name_asc':
-        query += " ORDER BY bn.tenbannhac ASC"
-    elif sort_option == 'name_desc':
-        query += " ORDER BY bn.tenbannhac DESC"
-    
-    # Thực thi query
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # Đếm tổng số bản ghi
-    count_query = "SELECT COUNT(*) as total FROM (" + query + ") as subquery"
-    cursor.execute(count_query, params)
-    total = cursor.fetchone()['total']
-    
-    # Lấy dữ liệu phân trang
-    query += " LIMIT %s OFFSET %s"
-    params.extend([per_page, offset])
-    cursor.execute(query, params)
-    recordings = cursor.fetchall()
-    
-    # Lấy danh sách ca sĩ cho filter
-    cursor.execute("SELECT idcasi, tencasi FROM casi ORDER BY tencasi")
-    artists = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
-    total_pages = (total + per_page - 1) // per_page
-    
-    return render_template(
-        'banthuam_list.html',
-        banthuam_list=recordings,
-        artists=artists,
-        page=page,
-        per_page=per_page,
-        total_pages=total_pages,
-        search_query=search_query
-    )
-
-# Cấu hình upload
-UPLOAD_FOLDER = 'static/recordings'
-ALLOWED_EXTENSIONS = {'mp3', 'wav', 'aac'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20MB
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-@app.route('/banthuam/add', methods=['GET', 'POST'])
-@csrf.exempt
-def add_banthuam():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    try:
-        if request.method == 'GET':
-            # Lấy danh sách bài hát
-            cursor.execute("""
-                SELECT b.idbannhac, b.tenbannhac, n.tennhacsi 
-                FROM bannhac b
-                JOIN nhacsi n ON b.idnhacsi = n.idnhacsi
-                ORDER BY b.tenbannhac
-            """)
-            songs = cursor.fetchall()
-            
-            # Lấy danh sách ca sĩ
-            cursor.execute("SELECT idcasi, tencasi FROM casi ORDER BY tencasi")
-            artists = cursor.fetchall()
-            
-            return render_template('banthuam_add.html', 
-                                 songs=songs, 
-                                 artists=artists,
-                                 now=datetime.now())
+        flash('Xóa bản thu âm thành công!', 'success')
         
-        elif request.method == 'POST':
-            # In ra dữ liệu POST để debug
-            print("Form data:", request.form)
-            print("Files:", request.files)
-            
-            # Lấy dữ liệu từ form
-            idbannhac = request.form.get('idbannhac')
-            idcasi = request.form.get('idcasi')
-            ngaythuam = request.form.get('ngaythuam')
-            thoiluong = request.form.get('thoiluong')
-            lyrics = request.form.get('lyrics', '').strip()
-            ghichu = request.form.get('ghichu', '').strip()
-            
-            # Validate dữ liệu
-            errors = []
-            if not idbannhac:
-                errors.append("Thiếu bài hát")
-            if not idcasi:
-                errors.append("Thiếu ca sĩ")
-            
-            if errors:
-                flash(f'Lỗi: {", ".join(errors)}', 'danger')
-                return redirect(url_for('add_banthuam'))
-            
-            # Xử lý file upload
-            file_path = None
-            if 'audio_file' in request.files:
-                file = request.files['audio_file']
-                if file and file.filename:
-                    # Kiểm tra định dạng file
-                    allowed_extensions = {'mp3', 'wav', 'aac', 'm4a'}
-                    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
-                    
-                    if ext not in allowed_extensions:
-                        flash('Định dạng file không hợp lệ. Chỉ chấp nhận: MP3, WAV, AAC, M4A', 'danger')
-                        return redirect(url_for('add_banthuam'))
-                    
-                    # Kiểm tra kích thước
-                    file.seek(0, 2)
-                    size = file.tell()
-                    file.seek(0)
-                    
-                    if size > 20 * 1024 * 1024:  # 20MB
-                        flash('File âm thanh không được vượt quá 20MB', 'danger')
-                        return redirect(url_for('add_banthuam'))
-                    
-                    # Tạo tên file an toàn
-                    filename = secure_filename(f"recording_{int(datetime.now().timestamp())}.{ext}")
-                    save_path = os.path.join('static/recordings', filename)
-                    
-                    # Tạo thư mục nếu chưa tồn tại
-                    os.makedirs('static/recordings', exist_ok=True)
-                    
-                    # Lưu file
-                    file.save(save_path)
-                    file_path = filename
-                    print(f"File saved: {save_path}")
-            
-            if not file_path:
-                flash('Vui lòng chọn file âm thanh', 'danger')
-                return redirect(url_for('add_banthuam'))
-            
-            # Thêm vào database
-            cursor.execute("""
-                INSERT INTO banthuam 
-                (idbannhac, idcasi, ngaythuam, thoiluong, lyrics, ghichu, file_path)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (idbannhac, idcasi, ngaythuam, thoiluong, lyrics, ghichu, file_path))
-            
-            conn.commit()
-            flash('✅ Thêm bản thu âm thành công!', 'success')
-            return redirect(url_for('banthuam_list'))
-            
     except Exception as e:
         conn.rollback()
-        print(f"Error: {str(e)}")
-        flash(f'❌ Lỗi: {str(e)}', 'danger')
-        return redirect(url_for('add_banthuam'))
+        flash(f'Lỗi khi xóa: {str(e)}', 'danger')
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return redirect(url_for('banthuam_list'))
+
+
+@app.route('/nhacsi/add', methods=['GET', 'POST'])
+@csrf.exempt
+def add_nhacsi():
+    """Add new composer"""
+    if request.method == 'GET':
+        return render_template('nhacsi_add.html')
+    
+    # POST request
+    conn = get_db_connection()
+    if not conn:
+        flash('Database connection error', 'danger')
+        return redirect(url_for('add_nhacsi'))
+    
+    cursor = conn.cursor()
+    try:
+        # Validate
+        tennhacsi = request.form.get('tennhacsi')
+        if not tennhacsi:
+            flash('Tên nhạc sĩ không được để trống', 'danger')
+            return redirect(url_for('add_nhacsi'))
+
+        # Handle image upload
+        avatar_path = None
+        if 'avatar' in request.files:
+            file = request.files['avatar']
+            if file and file.filename:
+                if not allowed_image(file.filename):
+                    flash('Định dạng ảnh không hợp lệ. Chỉ chấp nhận PNG, JPG, JPEG, GIF', 'danger')
+                    return redirect(url_for('add_nhacsi'))
+                
+                # Check size
+                file.seek(0, 2)
+                size = file.tell()
+                file.seek(0)
+                
+                if size > Config.MAX_IMAGE_SIZE:
+                    flash('Ảnh đại diện không được vượt quá 5MB', 'danger')
+                    return redirect(url_for('add_nhacsi'))
+                
+                # Save file
+                filename = secure_filename(f"{int(datetime.now().timestamp())}_{file.filename}")
+                save_path = os.path.join(Config.ARTIST_IMAGE_FOLDER, filename)
+                
+                os.makedirs(Config.ARTIST_IMAGE_FOLDER, exist_ok=True)
+                file.save(save_path)
+                avatar_path = f"images/artists/{filename}"
+
+        # Prepare data
+        nhacsi_data = {
+            'tennhacsi': tennhacsi,
+            'ngaysinh': request.form.get('ngaysinh'),
+            'gioitinh': request.form.get('gioitinh'),
+            'quequan': request.form.get('quequan'),
+            'tieusu': request.form.get('tieusu'),
+            'avatar': avatar_path
+        }
+        
+        # Insert
+        cursor.execute("""
+            INSERT INTO nhacsi 
+            (tennhacsi, ngaysinh, gioitinh, quequan, tieusu, avatar)
+            VALUES (%(tennhacsi)s, %(ngaysinh)s, %(gioitinh)s, %(quequan)s, %(tieusu)s, %(avatar)s)
+        """, nhacsi_data)
+        
+        conn.commit()
+        flash('Thêm nhạc sĩ thành công!', 'success')
+        return redirect(url_for('nhacsi_list'))
+        
+    except Exception as e:
+        conn.rollback()
+        # Delete uploaded file if error
+        if 'save_path' in locals() and os.path.exists(save_path):
+            os.remove(save_path)
+            
+        flash(f'Lỗi khi thêm nhạc sĩ: {str(e)}', 'danger')
+        return redirect(url_for('add_nhacsi'))
+        
     finally:
         cursor.close()
         conn.close()
 
-@app.route('/banthuam/add', methods=['GET', 'POST'])
-def add_recording():
-    if request.method == 'GET':
-        # Lấy danh sách bài hát và ca sĩ cho form
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        try:
-            # Lấy danh sách bài hát kèm tên nhạc sĩ
-            cursor.execute("""
-                SELECT b.idbannhac, b.tenbannhac, n.tennhacsi 
-                FROM bannhac b
-                JOIN nhacsi n ON b.idnhacsi = n.idnhacsi
-                ORDER BY b.tenbannhac
-            """)
-            songs = cursor.fetchall()
-            
-            # Lấy danh sách ca sĩ
-            cursor.execute("SELECT idcasi, tencasi FROM casi ORDER BY tencasi")
-            artists = cursor.fetchall()
-            
-            return render_template('banthuam_add.html', 
-                                songs=songs, 
-                                artists=artists)
-        
-        finally:
-            cursor.close()
-            conn.close()
-    
-    elif request.method == 'POST':
-        # Xử lý dữ liệu form
-        try:
-            # Validate dữ liệu
-            idbannhac = request.form.get('idbannhac')
-            idcasi = request.form.get('idcasi')
-            
-            if not idbannhac or not idcasi:
-                flash('Vui lòng chọn bài hát và ca sĩ', 'danger')
-                return redirect(url_for('add_recording'))
-            
-            # Xử lý file upload
-            if 'audio_file' not in request.files:
-                flash('Vui lòng chọn file âm thanh', 'danger')
-                return redirect(url_for('add_recording'))
-                
-            file = request.files['audio_file']
-            if file.filename == '':
-                flash('Không có file được chọn', 'danger')
-                return redirect(url_for('add_recording'))
-                
-            if not allowed_file(file.filename):
-                flash('Định dạng file không hợp lệ. Chỉ chấp nhận MP3, WAV, AAC', 'danger')
-                return redirect(url_for('add_recording'))
-            
-            # Tạo tên file an toàn
-            filename = secure_filename(file.filename)
-            save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            
-            # Đảm bảo không trùng tên file
-            counter = 1
-            while os.path.exists(save_path):
-                name, ext = os.path.splitext(filename)
-                filename = f"{name}_{counter}{ext}"
-                save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                counter += 1
-            
-            # Lưu file
-            file.save(save_path)
-            
-            # Chuẩn bị dữ liệu cho database
-            recording_data = {
-                'idbannhac': idbannhac,
-                'idcasi': idcasi,
-                'ngaythuam': request.form.get('ngaythuam') or datetime.now().strftime('%Y-%m-%d'),
-                'thoiluong': request.form.get('thoiluong'),
-                'file_path': filename,
-                'ghichu': request.form.get('ghichu')
-            }
-            
-            # Thêm vào database
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            query = """
-            INSERT INTO banthuam 
-            (idbannhac, idcasi, ngaythuam, thoiluong, file_path, ghichu)
-            VALUES (%(idbannhac)s, %(idcasi)s, %(ngaythuam)s, %(thoiluong)s, %(file_path)s, %(ghichu)s)
-            """
-            cursor.execute(query, recording_data)
-            conn.commit()
-            
-            flash('Thêm bản thu âm thành công!', 'success')
-            return redirect(url_for('banthuam_list'))
-            
-        except Exception as e:
-            # Xóa file đã upload nếu có lỗi
-            if 'save_path' in locals() and os.path.exists(save_path):
-                os.remove(save_path)
-                
-            flash(f'Lỗi khi thêm bản thu: {str(e)}', 'danger')
-            return redirect(url_for('add_recording'))
-        
-        finally:
-            if 'cursor' in locals():
-                cursor.close()
-            if 'conn' in locals():
-                conn.close()
-
-# Cấu hình upload ảnh nhạc sĩ
-ARTIST_IMAGE_FOLDER = 'static/images/artists'
-ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-app.config['ARTIST_IMAGE_FOLDER'] = ARTIST_IMAGE_FOLDER
-app.config['MAX_IMAGE_SIZE'] = 5 * 1024 * 1024  # 5MB
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
-def allowed_image(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
-
-@app.route('/nhacsi/add', methods=['GET', 'POST'])
-@csrf.exempt 
-def add_nhacsi():
-    if request.method == 'GET':
-        return render_template('nhacsi_add.html')
-    
-    elif request.method == 'POST':
-        # Xử lý dữ liệu form
-        try:
-            # Validate dữ liệu bắt buộc
-            tennhacsi = request.form.get('tennhacsi')
-            if not tennhacsi:
-                flash('Tên nhạc sĩ không được để trống', 'danger')
-                return redirect(url_for('add_nhacsi'))
-
-            # Xử lý file upload (không bắt buộc)
-            avatar_path = None
-            if 'avatar' in request.files:
-                file = request.files['avatar']
-                
-                # Chỉ xử lý nếu có file được chọn
-                if file.filename != '':
-                    if not allowed_image(file.filename):
-                        flash('Định dạng ảnh không hợp lệ. Chỉ chấp nhận PNG, JPG, JPEG, GIF', 'danger')
-                        return redirect(url_for('add_nhacsi'))
-                    
-                    if file.content_length > app.config['MAX_IMAGE_SIZE']:
-                        flash('Ảnh đại diện không được vượt quá 5MB', 'danger')
-                        return redirect(url_for('add_nhacsi'))
-                    
-                    # Tạo tên file an toàn
-                    filename = secure_filename(f"{datetime.now().timestamp()}_{file.filename}")
-                    save_path = os.path.join(app.config['ARTIST_IMAGE_FOLDER'], filename)
-                    
-                    # Đảm bảo thư mục tồn tại
-                    os.makedirs(app.config['ARTIST_IMAGE_FOLDER'], exist_ok=True)
-                    
-                    # Lưu file
-                    file.save(save_path)
-                    avatar_path = f"images/artists/{filename}"
-
-            # Chuẩn bị dữ liệu cho database
-            nhacsi_data = {
-                'tennhacsi': tennhacsi,
-                'ngaysinh': request.form.get('ngaysinh'),
-                'gioitinh': request.form.get('gioitinh'),
-                'quequan': request.form.get('quequan'),
-                'tieusu': request.form.get('tieusu'),
-                'avatar': avatar_path
-            }
-            
-            # Thêm vào database
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            query = """
-            INSERT INTO nhacsi 
-            (tennhacsi, ngaysinh, gioitinh, quequan, tieusu, avatar)
-            VALUES (%(tennhacsi)s, %(ngaysinh)s, %(gioitinh)s, %(quequan)s, %(tieusu)s, %(avatar)s)
-            """
-            cursor.execute(query, nhacsi_data)
-            conn.commit()
-            
-            flash('Thêm nhạc sĩ thành công!', 'success')
-            return redirect(url_for('nhacsi_list'))
-            
-        except Exception as e:
-            # Xóa file đã upload nếu có lỗi
-            if 'save_path' in locals() and os.path.exists(save_path):
-                os.remove(save_path)
-                
-            flash(f'Lỗi khi thêm nhạc sĩ: {str(e)}', 'danger')
-            return redirect(url_for('add_nhacsi'))
-        
-        finally:
-            if 'cursor' in locals():
-                cursor.close()
-            if 'conn' in locals():
-                conn.close()
 
 @app.route('/nhacsi/edit/<int:idnhacsi>', methods=['GET', 'POST'])
 def edit_nhacsi(idnhacsi):
+    """Edit composer"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    if not conn:
+        flash('Database connection error', 'danger')
+        return redirect(url_for('nhacsi_list'))
     
+    cursor = conn.cursor(dictionary=True)
     try:
-        # Lấy thông tin nhạc sĩ hiện tại
+        # Get current composer
         cursor.execute("SELECT * FROM nhacsi WHERE idnhacsi = %s", (idnhacsi,))
         nhacsi = cursor.fetchone()
         
@@ -2225,43 +2089,41 @@ def edit_nhacsi(idnhacsi):
             return redirect(url_for('nhacsi_list'))
         
         if request.method == 'POST':
-            # Xử lý dữ liệu form
+            # Get form data
             tennhacsi = request.form.get('tennhacsi', '').strip()
             ngaysinh = request.form.get('ngaysinh')
             gioitinh = request.form.get('gioitinh')
             quequan = request.form.get('quequan', '').strip()
             tieusu = request.form.get('tieusu', '').strip()
             
-            # Validate dữ liệu bắt buộc
+            # Validate
             if not tennhacsi:
                 flash('Tên nhạc sĩ không được để trống', 'danger')
                 return redirect(url_for('edit_nhacsi', idnhacsi=idnhacsi))
             
-            # Xử lý file upload (nếu có)
-            avatar_path = nhacsi['avatar']  # Giữ nguyên avatar cũ nếu không upload mới
+            # Handle image
+            avatar_path = nhacsi['avatar']
             
             if 'avatar' in request.files:
                 file = request.files['avatar']
-                if file.filename != '':
+                if file and file.filename:
                     if not allowed_image(file.filename):
                         flash('Định dạng ảnh không hợp lệ', 'danger')
                         return redirect(url_for('edit_nhacsi', idnhacsi=idnhacsi))
                     
-                    # Tạo tên file mới
                     filename = secure_filename(f"{int(datetime.now().timestamp())}_{file.filename}")
-                    save_path = os.path.join(app.config['ARTIST_IMAGE_FOLDER'], filename)
+                    save_path = os.path.join(Config.ARTIST_IMAGE_FOLDER, filename)
                     
-                    # Lưu file mới
                     file.save(save_path)
                     avatar_path = f"images/artists/{filename}"
                     
-                    # Xóa file cũ (nếu có)
+                    # Delete old file
                     if nhacsi['avatar']:
-                        old_file = os.path.join(app.config['ARTIST_IMAGE_FOLDER'], nhacsi['avatar'].split('/')[-1])
+                        old_file = os.path.join(Config.ARTIST_IMAGE_FOLDER, nhacsi['avatar'].split('/')[-1])
                         if os.path.exists(old_file):
                             os.remove(old_file)
             
-            # Cập nhật database
+            # Update
             cursor.execute("""
                 UPDATE nhacsi 
                 SET tennhacsi = %s, 
@@ -2277,7 +2139,7 @@ def edit_nhacsi(idnhacsi):
             flash('Cập nhật nhạc sĩ thành công!', 'success')
             return redirect(url_for('nhacsi_detail', id=idnhacsi))
         
-        # Hiển thị form chỉnh sửa (GET request)
+        # GET request - show form
         return render_template('nhacsi_edit.html', nhacsi=nhacsi)
         
     except Exception as e:
@@ -2286,39 +2148,135 @@ def edit_nhacsi(idnhacsi):
         return redirect(url_for('edit_nhacsi', idnhacsi=idnhacsi))
         
     finally:
-        if conn.is_connected():
-            cursor.close()
+        cursor.close()
+        conn.close()
+
+
+# ============================================
+# DATABASE FUNCTIONS
+# ============================================
+
+def get_db_config():
+    """Get database config from user input"""
+    print("\n🔧 NHẬP THÔNG TIN DATABASE (Enter để dùng Railway mặc định)")
+    
+    config = {
+        'host': input("MySQL Host [switchback.proxy.rlwy.net]: ").strip() or "switchback.proxy.rlwy.net",
+        'port': int(input("Port [53475]: ").strip() or 53475),
+        'user': input("Username [root]: ").strip() or "root",
+        'database': input("Database [railway]: ").strip() or "railway",
+        'charset': 'utf8mb4',
+        'client_flag': CLIENT.MULTI_STATEMENTS
+    }
+    
+    password = getpass.getpass("Password (Railway MySQL): ").strip()
+    config['password'] = password
+    
+    return config
+
+
+def restore_database(config, backup_file):
+    """Restore database from SQL file"""
+    conn = None
+    
+    try:
+        print(f"\n🔗 Đang kết nối MySQL tại {config['host']}:{config['port']}...")
+        
+        conn = pymysql.connect(
+            host=config['host'],
+            port=config['port'],
+            user=config['user'],
+            password=config['password'],
+            database=config['database'],
+            charset=config['charset'],
+            client_flag=config['client_flag'],
+            autocommit=True
+        )
+        
+        with conn.cursor() as cursor:
+            # Check MySQL version
+            cursor.execute("SELECT VERSION()")
+            print(f"⚙️ MySQL Version: {cursor.fetchone()[0]}")
+            
+            print(f"\n📥 Đang import dữ liệu từ {backup_file}...")
+            
+            # Disable foreign key checks
+            cursor.execute("SET FOREIGN_KEY_CHECKS=0")
+            
+            sql_command = ""
+            
+            with open(backup_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    
+                    # Skip comments
+                    if line.startswith("--") or line == "":
+                        continue
+                    
+                    sql_command += line + " "
+                    
+                    # Execute when encountering ;
+                    if line.endswith(";"):
+                        try:
+                            cursor.execute(sql_command)
+                        except Exception as e:
+                            print("⚠️ SQL Error:", e)
+                        
+                        sql_command = ""
+            
+            # Enable foreign key checks
+            cursor.execute("SET FOREIGN_KEY_CHECKS=1")
+        
+        print("\n✅ DATABASE RESTORE SUCCESSFUL!")
+        print("\n🔑 Connection info:")
+        print(f"- Host: {config['host']}")
+        print(f"- Port: {config['port']}")
+        print(f"- Database: {config['database']}")
+        print(f"- Username: {config['user']}")
+        
+    except pymysql.Error as e:
+        print(f"\n❌ MySQL Error ({e.args[0]}): {e.args[1]}")
+    except FileNotFoundError:
+        print(f"\n❌ FILE NOT FOUND: {backup_file}")
+    except Exception as e:
+        print(f"\n❌ UNKNOWN ERROR: {str(e)}")
+    finally:
+        if conn:
             conn.close()
 
-import argparse
+
+# ============================================
+# MAIN ENTRY POINT
+# ============================================
 
 # --- KHỞI CHẠY ỨNG DỤNG --- #
 if __name__ == '__main__':
+
     # TẮT CẢNH BÁO
     import warnings
     warnings.filterwarnings("ignore", category=UserWarning, module='getpass')
-    
-    # Kiểm tra kết nối database - DÙNG CẤU HÌNH CỐ ĐỊNH
+
+    # Kiểm tra kết nối database
     print("🔍 Đang kiểm tra kết nối database...")
-    
-    # Sử dụng DB_CONFIG từ file config.py
+
     test_conn = None
     try:
         test_conn = mysql.connector.connect(**DB_CONFIG)
         print("✅ Kết nối database thành công!")
     except Exception as e:
         print(f"❌ Lỗi kết nối database: {e}")
-        print("👉 Kiểm tra lại thông tin trong config.py")
-        # Không thoát, vẫn tiếp tục chạy
+        print("👉 Kiểm tra lại config.py")
     finally:
         if test_conn and test_conn.is_connected():
             test_conn.close()
-    
-    # Chạy ứng dụng
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--host', default='0.0.0.0', help='Host to bind')
-    parser.add_argument('--port', type=int, default=5000, help='Port to bind')
-    args = parser.parse_args()
-    
-    print(f"\n🚀 Ứng dụng đang chạy tại http://{args.host}:{args.port}")
-    app.run(host=args.host, port=args.port, debug=False)
+
+    # Lấy PORT từ Render
+    port = int(os.environ.get("PORT", 5000))
+
+    print(f"\n🚀 Ứng dụng đang chạy tại http://0.0.0.0:{port}")
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False
+    )
