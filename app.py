@@ -196,11 +196,11 @@ def rate_limit(max_requests=5, time_window=60):
 
 # ===== THÊM MỚI: Retry Mechanism cho Gemini =====
 # --- CẤU HÌNH GOOGLE AI ---
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
-# Khởi tạo client (giữ nguyên của bạn)
-client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 def call_gemini_with_retry(prompt, retries=3, delay=5):
     """
