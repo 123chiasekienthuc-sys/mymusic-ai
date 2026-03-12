@@ -4,75 +4,109 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trang Thông Tin Âm Nhạc</title>
+    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
         <div class="container">
-            <a class="navbar-brand" href="/">Music App</a>
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-music me-2"></i>Music App
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/nhacsi">
+                            <i class="fas fa-user-edit me-1"></i>Nhạc Sĩ
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/casi">
+                            <i class="fas fa-microphone-alt me-1"></i>Ca Sĩ
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/bannhac">
+                            <i class="fas fa-music me-1"></i>Bản Nhạc
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/banthuam">
+                            <i class="fas fa-headphones me-1"></i>Bản Thu Âm
+                        </a>
+                    </li>
+                </ul>
                 <ul class="navbar-nav">
                     <li class="nav-item">
-                        <a class="nav-link" href="/nhacsi">Nhạc Sĩ</a>
+                        <a class="nav-link text-warning" href="/thuc-hanh-ai">
+                            <i class="fas fa-brain me-1"></i>Trợ lý AI
+                        </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/casi">Ca Sĩ</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/bannhac">Bản Nhạc</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/banthuam">Bản Thu Âm</a>
-                    </li>
-<li class="nav-item">
-    <a class="nav-link text-warning" href="/thuc-hanh-ai">
-        <i class="fas fa-brain"></i> Trợ lý AI thực hành
-    </a>
-</li>
                 </ul>
             </div>
         </div>
     </nav>
 
-<!-- Đặt sau thẻ <nav> và trước block content -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% if messages %}
-<div class="container mt-3">
-    {% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-    {% endfor %}
-</div>
-{% endif %}
-{% endwith %}
-<!-- Hiển thị flash messages -->
-<div class="container mt-3">
+    <!-- Flash Messages - CHỈ GIỮ LẠI MỘT LẦN -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            {% endfor %}
+            <div class="container mt-3">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                        <div class="d-flex align-items-center">
+                            {% if category == 'success' %}
+                                <i class="fas fa-check-circle me-2"></i>
+                            {% elif category == 'error' or category == 'danger' %}
+                                <i class="fas fa-exclamation-circle me-2"></i>
+                            {% elif category == 'warning' %}
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                            {% else %}
+                                <i class="fas fa-info-circle me-2"></i>
+                            {% endif %}
+                            <div>{{ message }}</div>
+                            <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
         {% endif %}
     {% endwith %}
-</div>
 
-    <div class="container mt-4">
+    <!-- Main Content -->
+    <main class="py-3">
         {% block content %}{% endblock %}
-    </div>
-   <div class="container mt-4">
-  	{% block footer %}{% endblock %}
-    </div>
+    </main>
+
+    <!-- Footer Block -->
+    {% block footer %}{% endblock %}
+
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    
+    <!-- Active Link Highlighting -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentLocation = window.location.pathname;
+            const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+            
+            navLinks.forEach(link => {
+                const linkPath = link.getAttribute('href');
+                if (linkPath === currentLocation) {
+                    link.classList.add('active');
+                } else if (currentLocation.startsWith(linkPath) && linkPath !== '/') {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
 </body>
 </html>

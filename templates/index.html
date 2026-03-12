@@ -9,8 +9,8 @@
 </div>
 
 <div class="container mt-5">
+    <!-- Thống kê nhanh -->
     <div class="row">
-        <!-- Thống kê nhanh -->
         <div class="col-md-3 mb-4">
             <div class="card stat-card bg-primary text-white">
                 <div class="card-body text-center">
@@ -54,138 +54,218 @@
 
     <!-- Mới cập nhật -->
     <div class="row mt-4">
-       <!-- Danh sách nhạc sĩ mới nhất -->
-    <div class="col-md-6">
-        <div class="card shadow-sm">
-            <div class="card-header bg-primary text-white">
-                <h4><i class="fas fa-users me-2"></i>Nhạc Sĩ Mới Nhất</h4>
-            </div>
-            <div class="card-body">
-        <div class="list-group" id="latestNhacSi">
-            {% for nhacsi in latest_nhacsi %}
-            <a href="{{ url_for('nhacsi_detail', id=nhacsi.idnhacsi) }}" 
-               class="list-group-item list-group-item-action">
-                <div class="d-flex w-100 justify-content-between">
-                    <h6 class="mb-1">{{ nhacsi.tennhacsi }}</h6>
-                    <small>{{ nhacsi.ngay_them }}</small>
+        <!-- Nhạc sĩ mới nhất (từ server) -->
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4><i class="fas fa-users me-2"></i>Nhạc Sĩ Mới Nhất</h4>
                 </div>
-                <p class="mb-1 text-truncate">{{ nhacsi.tieusu|default('Chưa có tiểu sử', true) }}</p>
-            </a>
-            {% endfor %}
-        </div>
-        <a href="{{ url_for('nhacsi_list') }}" class="btn btn-primary mt-3">Xem tất cả nhạc sĩ</a>
-    </div>
-        </div>
-        </div>
-
-     
-<!-- Danh sách ca sĩ mới nhất -->
-<div class="col-md-6">
-    <div class="card shadow-sm">
-        <div class="card-header bg-success text-white">
-            <h4><i class="fas fa-microphone me-2"></i>Ca Sĩ Mới Nhất</h4>
-        </div>
-        <div class="card-body">
-            <div class="list-group" id="latestCaSiList">
-                <!-- Dữ liệu sẽ được thêm bằng JavaScript -->
-                <div class="text-center py-3">
-                    <div class="spinner-border text-success" role="status">
-                        <span class="visually-hidden">Loading...</span>
+                <div class="card-body">
+                    <div class="list-group" id="latestNhacSiStatic">
+                        {% for nhacsi in latest_nhacsi %}
+                        <a href="{{ url_for('nhacsi_detail', id=nhacsi.idnhacsi) }}" 
+                           class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">{{ nhacsi.tennhacsi }}</h6>
+                                <small>{{ nhacsi.ngay_them }}</small>
+                            </div>
+                            <p class="mb-1 text-truncate">{{ nhacsi.tieusu|default('Chưa có tiểu sử', true) }}</p>
+                        </a>
+                        {% endfor %}
                     </div>
+                    <a href="{{ url_for('nhacsi_list') }}" class="btn btn-primary mt-3">Xem tất cả nhạc sĩ</a>
                 </div>
             </div>
-            <a href="/casi" class="btn btn-success btn-sm mt-3">Xem tất cả ca sĩ</a>
+        </div>
+
+        <!-- Ca sĩ mới nhất (từ API) -->
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h4><i class="fas fa-microphone me-2"></i>Ca Sĩ Mới Nhất</h4>
+                </div>
+                <div class="card-body">
+                    <div class="list-group" id="latestCaSiList">
+                        <div class="text-center py-3">
+                            <div class="spinner-border text-success" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <a href="/casi" class="btn btn-success btn-sm mt-3">Xem tất cả ca sĩ</a>
+                </div>
+            </div>
         </div>
     </div>
-</div>
-   
-
- </div>
 
     <!-- Bản nhạc nổi bật -->
-   <!-- Thêm vào sau phần hiển thị ca sĩ/nhạc sĩ mới nhất -->
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="card shadow">
-            <div class="card-header bg-danger text-white">
-                <h4><i class="fas fa-fire me-2"></i>Bản Nhạc Nổi Bật</h4>
-            </div>
-            <div class="card-body">
-                <div class="row" id="featuredSongs">
-                    <!-- Loading spinner -->
-                    <div class="col-12 text-center py-4">
-                        <div class="spinner-border text-danger" role="status">
-                            <span class="visually-hidden">Loading...</span>
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header bg-danger text-white">
+                    <h4><i class="fas fa-fire me-2"></i>Bản Nhạc Nổi Bật</h4>
+                </div>
+                <div class="card-body">
+                    <div class="row" id="featuredSongs">
+                        <div class="col-12 text-center py-4">
+                            <div class="spinner-border text-danger" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
-	
 
-<!-- Thêm sau phần bản nhạc nổi bật -->
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="card shadow">
-            <div class="card-header bg-warning text-dark">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h4><i class="fas fa-star me-2"></i>Bản Thu Âm Nổi Bật</h4>
-                    <a href="/banthuam" class="btn btn-sm btn-dark">Xem tất cả</a>
+    <!-- Bản thu âm nổi bật -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header bg-warning text-dark">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h4><i class="fas fa-star me-2"></i>Bản Thu Âm Nổi Bật</h4>
+                        <a href="/banthuam" class="btn btn-sm btn-dark">Xem tất cả</a>
+                    </div>
                 </div>
-            </div>
-            <div class="card-body">
-                <div class="row" id="featuredRecordings">
-                    <!-- Loading spinner -->
-                    <div class="col-12 text-center py-4">
-                        <div class="spinner-border text-warning" role="status">
-                            <span class="visually-hidden">Loading...</span>
+                <div class="card-body">
+                    <div class="row" id="featuredRecordings">
+                        <div class="col-12 text-center py-4">
+                            <div class="spinner-border text-warning" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
-
 </div>
 
 <script>
-// Lấy dữ liệu thống kê
 document.addEventListener('DOMContentLoaded', function() {
-    // Lấy số lượng
+    // 1. Lấy số lượng thống kê
     fetch('/api/stats')
         .then(response => response.json())
         .then(data => {
-            document.getElementById('nhacsiCount').textContent = data.nhacsi;
-            document.getElementById('casiCount').textContent = data.casi;
-            document.getElementById('bannhacCount').textContent = data.bannhac;
-            document.getElementById('banthuamCount').textContent = data.banthuam;
-        });
+            document.getElementById('nhacsiCount').textContent = data.nhacsi || 0;
+            document.getElementById('casiCount').textContent = data.casi || 0;
+            document.getElementById('bannhacCount').textContent = data.bannhac || 0;
+            document.getElementById('banthuamCount').textContent = data.banthuam || 0;
+        })
+        .catch(error => console.error('Lỗi stats:', error));
 
-    // Lấy nhạc sĩ mới nhất
-    fetch('/api/nhacsi/latest')
+    // 2. Lấy ca sĩ mới nhất
+    fetch('/api/casi/latest')
         .then(response => response.json())
         .then(data => {
-            const container = document.getElementById('latestNhacSi');
+            const container = document.getElementById('latestCaSiList');
+            if (!container) return;
+            
+            container.innerHTML = ''; // Xóa spinner
+            
+            if (data.length === 0) {
+                container.innerHTML = '<div class="text-center py-3 text-muted">Chưa có ca sĩ</div>';
+                return;
+            }
+            
             data.forEach(item => {
                 const elem = document.createElement('a');
-                elem.href = `/nhacsi/${item.idnhacsi}`;
+                elem.href = `/casi/${item.idcasi}`;
                 elem.className = 'list-group-item list-group-item-action';
                 elem.innerHTML = `
                     <div class="d-flex w-100 justify-content-between">
-                        <h6 class="mb-1">${item.tennhacsi}</h6>
-                        <small>${new Date(item.created_at).toLocaleDateString('vi-VN')}</small>
+                        <h6 class="mb-1">${item.tencasi}</h6>
+                        <small>${item.ngay_them || ''}</small>
                     </div>
-                    <p class="mb-1 text-truncate">${item.tieusu || 'Chưa có tiểu sử'}</p>
+                    <p class="mb-1 text-truncate">${item.sunghiep || 'Chưa có thông tin'}</p>
                 `;
                 container.appendChild(elem);
             });
+        })
+        .catch(error => {
+            console.error('Lỗi casi:', error);
+            document.getElementById('latestCaSiList').innerHTML = 
+                '<div class="text-center py-3 text-danger">Không thể tải dữ liệu</div>';
         });
 
-    // Lấy ca sĩ mới nhất (tương tự)
-    // Lấy bản nhạc nổi bật (tương tự)
+    // 3. Lấy bản nhạc nổi bật
+    fetch('/api/bannhac/noibat')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('featuredSongs');
+            if (!container) return;
+            
+            container.innerHTML = ''; // Xóa spinner
+            
+            if (data.length === 0) {
+                container.innerHTML = '<div class="col-12 text-center py-4 text-muted">Chưa có bản nhạc</div>';
+                return;
+            }
+            
+            data.forEach(song => {
+                const col = document.createElement('div');
+                col.className = 'col-md-3 col-sm-6 mb-3';
+                col.innerHTML = `
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h6 class="card-title text-truncate">${song.tenbannhac}</h6>
+                            <p class="card-text small text-muted">${song.tennhacsi || 'N/A'}</p>
+                            <p class="card-text">
+                                <small class="badge bg-primary">${song.soluong_banthuam || 0} bản thu</small>
+                            </p>
+                            <a href="/bannhac/${song.idbannhac}" class="stretched-link"></a>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(col);
+            });
+        })
+        .catch(error => {
+            console.error('Lỗi bannhac:', error);
+            document.getElementById('featuredSongs').innerHTML = 
+                '<div class="col-12 text-center py-4 text-danger">Không thể tải dữ liệu</div>';
+        });
+
+    // 4. Lấy bản thu âm nổi bật
+    fetch('/api/banthuam/noibat')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('featuredRecordings');
+            if (!container) return;
+            
+            container.innerHTML = ''; // Xóa spinner
+            
+            if (data.length === 0) {
+                container.innerHTML = '<div class="col-12 text-center py-4 text-muted">Chưa có bản thu âm</div>';
+                return;
+            }
+            
+            data.forEach(rec => {
+                const col = document.createElement('div');
+                col.className = 'col-md-4 col-sm-6 mb-3';
+                col.innerHTML = `
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h6 class="card-title text-truncate">${rec.tenbannhac}</h6>
+                            <p class="card-text small">${rec.tencasi}</p>
+                            <p class="card-text">
+                                <small class="text-muted">
+                                    <i class="far fa-calendar-alt me-1"></i>${rec.ngay_them || 'N/A'}
+                                </small>
+                            </p>
+                            <a href="/banthuam/detail/${rec.idbanthuam}" class="stretched-link"></a>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(col);
+            });
+        })
+        .catch(error => {
+            console.error('Lỗi banthuam:', error);
+            document.getElementById('featuredRecordings').innerHTML = 
+                '<div class="col-12 text-center py-4 text-danger">Không thể tải dữ liệu</div>';
+        });
 });
 </script>
 
@@ -195,7 +275,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 url('/static/images/music-bg.jpg');
     background-size: cover;
     background-position: center;
-    height: 200px;
+    height: 300px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -222,11 +302,23 @@ document.addEventListener('DOMContentLoaded', function() {
     border-radius: 10px;
     overflow: hidden;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: all 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 15px rgba(0,0,0,0.1);
 }
 
 .list-group-item {
     border-left: none;
     border-right: none;
+    transition: all 0.2s;
+}
+
+.list-group-item:hover {
+    background-color: #f8f9fa;
+    transform: translateX(5px);
 }
 
 @media (max-width: 768px) {
@@ -235,28 +327,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     .hero-content h1 {
-        font-size: 2.2rem;
+        font-size: 1.8rem;
     }
-   .footer-container { flex-direction: column;
-}
-.site-footer {
-    background-color: #2c3e50;
-    color: white;
-    padding: 20px;
-}
-.footer-container {
-    display: flex;
-    justify-content: space-between;
+    
+    .hero-content p {
+        font-size: 1rem;
+    }
 }
 </style>
 {% endblock %}
-<!-- Thêm footer (nếu base.html chưa có) -->
 
 {% block footer %}
 <footer class="site-footer mt-5 py-4 bg-dark text-white">
     <div class="container">
         <div class="row">
-            <!-- Phần thông tin liên hệ -->
             <div class="col-md-4 mb-3">
                 <h5>Liên hệ</h5>
                 <ul class="list-unstyled">
@@ -266,18 +350,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 </ul>
             </div>
             
-            <!-- Liên kết nhanh -->
             <div class="col-md-4 mb-3">
                 <h5>Điều hướng</h5>
                 <ul class="list-unstyled">
-                    <li><a href="/nhacsi" class="text-white">Nhạc sĩ</a></li>
-                    <li><a href="/casi" class="text-white">Ca sĩ</a></li>
-                    <li><a href="/bannhac" class="text-white">Bản nhạc</a></li>
-                    <li><a href="/banthuam" class="text-white">Bản thu âm</a></li>
+                    <li><a href="/nhacsi" class="text-white text-decoration-none">Nhạc sĩ</a></li>
+                    <li><a href="/casi" class="text-white text-decoration-none">Ca sĩ</a></li>
+                    <li><a href="/bannhac" class="text-white text-decoration-none">Bản nhạc</a></li>
+                    <li><a href="/banthuam" class="text-white text-decoration-none">Bản thu âm</a></li>
                 </ul>
             </div>
             
-            <!-- Mạng xã hội -->
             <div class="col-md-4 mb-3">
                 <h5>Theo dõi chúng tôi</h5>
                 <div class="social-links">
@@ -285,14 +367,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <a href="#" class="text-white me-2"><i class="fab fa-youtube fa-lg"></i></a>
                     <a href="#" class="text-white me-2"><i class="fab fa-spotify fa-lg"></i></a>
                     <a href="#" class="text-white me-2"><i class="fab fa-soundcloud fa-lg"></i></a>
-                </div>
-                
-                <div class="mt-3">
-                    <p>Đăng ký nhận bản tin</p>
-                    <div class="input-group">
-                        <input type="email" class="form-control" placeholder="Email của bạn">
-                        <button class="btn btn-primary" type="button">Đăng ký</button>
-                    </div>
                 </div>
             </div>
         </div>
