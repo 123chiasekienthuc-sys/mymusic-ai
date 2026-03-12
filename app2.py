@@ -27,8 +27,9 @@ from mysql.connector import Error
 from dotenv import load_dotenv
 
 # Google AI
-from google import genai
+import google.generativeai as genai
 from google.genai import types
+
 
 # Import AI Assistant
 from ai_assistant import sql_assistant
