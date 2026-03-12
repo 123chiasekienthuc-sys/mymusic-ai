@@ -25,12 +25,15 @@
     <!-- Thanh tìm kiếm và bộ lọc -->
     <div class="card shadow-sm mb-4">
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-8 mb-3 mb-md-0">
+            <div class="row g-3">
+                <div class="col-md-8">
                     <div class="input-group">
                         <input type="text" id="searchInput" class="form-control" placeholder="Tìm kiếm ca sĩ..." autocomplete="off">
                         <button class="btn btn-outline-secondary" type="button" id="searchBtn">
                             <i class="fas fa-search"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" title="Xóa tìm kiếm" style="display: none;">
+                            <i class="fas fa-times"></i>
                         </button>
                     </div>
                 </div>
@@ -58,7 +61,7 @@
                             <th>Ngày sinh</th>
                             <th width="120">Số bản thu</th>
                             <th width="120">Ngày thêm</th>
-                            <th width="100">Hành động</th>
+                            <th width="120">Hành động</th>
                         </tr>
                     </thead>
                     <tbody id="casiTableBody">
@@ -67,11 +70,13 @@
                             <td class="align-middle">{{ loop.index + (page - 1) * per_page }}</td>
                             <td class="align-middle">
                                 <div class="d-flex align-items-center">
-                                    <img src="{{ url_for('static', filename='images/singers/' + casi.anhdaidien) if casi.anhdaidien else url_for('static', filename='images/default-avatar.jpg') }}" 
+                                    <!-- SỬA: Xử lý ảnh đúng cách -->
+                                    <img src="{% if casi.anhdaidien %}{{ url_for('static', filename='images/singers/' + casi.anhdaidien) }}{% else %}{{ url_for('static', filename='images/default-avatar.jpg') }}{% endif %}" 
                                          class="rounded-circle me-3" 
                                          width="45" 
                                          height="45" 
-                                         style="object-fit: cover; border: 2px solid #e9ecef;"
+                                         style="object-fit: cover; border: 2px solid #198754;"
+                                         alt="{{ casi.tencasi }}"
                                          onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/default-avatar.jpg') }}';">
                                     <div>
                                         <a href="/casi/{{ casi.idcasi }}" class="text-decoration-none fw-bold text-dark">
@@ -114,7 +119,7 @@
                                     <button class="btn btn-sm btn-outline-danger" 
                                             title="Xóa ca sĩ"
                                             data-bs-toggle="tooltip"
-                                            onclick="confirmDelete({{ casi.idcasi }}, '{{ casi.tencasi }}')">
+                                            onclick="confirmDelete({{ casi.idcasi }}, '{{ casi.tencasi|escapejs }}')">
                                         <i class="fas fa-trash-alt"></i>
                                     </button>
                                 </div>
@@ -125,7 +130,8 @@
                             <td colspan="6" class="text-center py-5">
                                 <i class="fas fa-microphone-alt fa-3x text-muted mb-3"></i>
                                 <h5 class="text-muted">Chưa có ca sĩ nào</h5>
-                                <a href="/casi/add" class="btn btn-success mt-2">
+                                <p class="text-muted mb-3">Hãy thêm ca sĩ đầu tiên vào hệ thống</p>
+                                <a href="/casi/add" class="btn btn-success">
                                     <i class="fas fa-plus me-1"></i>Thêm ca sĩ đầu tiên
                                 </a>
                             </td>
@@ -186,7 +192,7 @@
 
     <!-- Hiển thị tổng số -->
     <div class="text-center text-muted mt-3">
-        <small>Tổng số: <strong>{{ casi_list|length }}</strong> ca sĩ</small>
+        <small>Tổng số: <strong>{{ pagination.total if pagination else casi_list|length }}</strong> ca sĩ</small>
     </div>
 </div>
 
@@ -244,7 +250,6 @@ function confirmDelete(id, name) {
 
 // Gọi API xóa ca sĩ
 function deleteCasi(id) {
-    // Disable nút xóa để tránh double click
     const deleteBtn = document.getElementById('confirmDeleteBtn');
     deleteBtn.disabled = true;
     deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang xóa...';
@@ -258,7 +263,6 @@ function deleteCasi(id) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Hiển thị thông báo thành công
             showToast('success', 'Xóa ca sĩ thành công!');
             setTimeout(() => {
                 location.reload();
@@ -277,7 +281,7 @@ function deleteCasi(id) {
     });
 }
 
-// Tìm kiếm ca sĩ (client-side)
+// Tìm kiếm ca sĩ
 document.getElementById('searchBtn').addEventListener('click', function() {
     performSearch();
 });
@@ -288,9 +292,14 @@ document.getElementById('searchInput').addEventListener('keyup', function(e) {
     }
 });
 
+document.getElementById('clearSearchBtn')?.addEventListener('click', function() {
+    clearSearch();
+});
+
 function performSearch() {
     const keyword = document.getElementById('searchInput').value.toLowerCase().trim();
-    const rows = document.querySelectorAll('#casiTableBody tr');
+    const rows = document.querySelectorAll('#casiTableBody tr:not(#noResultRow)');
+    const clearBtn = document.getElementById('clearSearchBtn');
     let visibleCount = 0;
     
     rows.forEach(row => {
@@ -306,6 +315,11 @@ function performSearch() {
         }
     });
     
+    // Hiển thị/ẩn nút clear
+    if (clearBtn) {
+        clearBtn.style.display = keyword ? 'inline-block' : 'none';
+    }
+    
     // Hiển thị thông báo nếu không tìm thấy
     const noResultRow = document.getElementById('noResultRow');
     if (visibleCount === 0 && keyword !== '') {
@@ -316,7 +330,7 @@ function performSearch() {
             tr.innerHTML = `
                 <td colspan="6" class="text-center py-5">
                     <i class="fas fa-search fa-3x text-muted mb-3"></i>
-                    <h5 class="text-muted">Không tìm thấy ca sĩ "{{ keyword }}"</h5>
+                    <h5 class="text-muted">Không tìm thấy ca sĩ "${keyword}"</h5>
                     <button class="btn btn-outline-secondary mt-2" onclick="clearSearch()">
                         <i class="fas fa-times me-1"></i>Xóa tìm kiếm
                     </button>
@@ -331,8 +345,10 @@ function performSearch() {
 
 // Xóa tìm kiếm
 function clearSearch() {
-    document.getElementById('searchInput').value = '';
+    const input = document.getElementById('searchInput');
+    input.value = '';
     performSearch();
+    input.focus();
 }
 
 // Lọc ca sĩ
@@ -340,13 +356,12 @@ document.getElementById('filterSelect').addEventListener('change', function() {
     const filterBy = this.value;
     const url = new URL(window.location.href);
     url.searchParams.set('filter', filterBy);
-    url.searchParams.set('page', '1'); // Reset về trang 1 khi lọc
+    url.searchParams.set('page', '1');
     window.location.href = url.toString();
 });
 
 // Hiển thị toast thông báo
 function showToast(type, message) {
-    // Tạo container nếu chưa có
     let toastContainer = document.querySelector('.toast-container');
     if (!toastContainer) {
         toastContainer = document.createElement('div');
@@ -354,7 +369,6 @@ function showToast(type, message) {
         document.body.appendChild(toastContainer);
     }
     
-    // Tạo toast
     const toastId = 'toast-' + Date.now();
     const toast = document.createElement('div');
     toast.className = `toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0`;
@@ -375,7 +389,6 @@ function showToast(type, message) {
     
     toastContainer.appendChild(toast);
     
-    // Hiển thị toast
     const bsToast = new bootstrap.Toast(toast, {
         animation: true,
         autohide: true,
@@ -383,10 +396,18 @@ function showToast(type, message) {
     });
     bsToast.show();
     
-    // Xóa toast sau khi ẩn
     toast.addEventListener('hidden.bs.toast', function() {
         this.remove();
     });
+}
+
+// Escape string cho JavaScript
+function escapeJsString(str) {
+    return str.replace(/\\/g, '\\\\')
+              .replace(/'/g, "\\'")
+              .replace(/"/g, '\\"')
+              .replace(/\n/g, '\\n')
+              .replace(/\r/g, '\\r');
 }
 </script>
 
@@ -402,15 +423,16 @@ function showToast(type, message) {
     text-transform: uppercase;
     font-size: 0.85rem;
     letter-spacing: 0.5px;
+    background-color: #f8f9fa;
 }
 
 .btn-group .btn {
     padding: 0.25rem 0.5rem;
+    transition: all 0.2s;
 }
 
 .btn-group .btn:hover {
     transform: translateY(-2px);
-    transition: transform 0.2s;
 }
 
 .page-item.active .page-link {
@@ -429,6 +451,7 @@ function showToast(type, message) {
 .badge.bg-success {
     background-color: #198754 !important;
     font-size: 0.85rem;
+    font-weight: 500;
 }
 
 /* Loading spinner */
@@ -445,6 +468,18 @@ function showToast(type, message) {
 
 .toast {
     min-width: 250px;
+    border-radius: 8px;
+}
+
+/* Input group */
+.input-group .btn-outline-secondary {
+    border-color: #ced4da;
+}
+
+.input-group .btn-outline-secondary:hover {
+    background-color: #198754;
+    color: white;
+    border-color: #198754;
 }
 
 /* Responsive */
@@ -467,6 +502,10 @@ function showToast(type, message) {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
     }
+    
+    .col-md-8, .col-md-4 {
+        width: 100%;
+    }
 }
 
 /* Animation */
@@ -483,6 +522,16 @@ function showToast(type, message) {
 
 .card {
     animation: fadeIn 0.3s ease;
+}
+
+/* Avatar image */
+.rounded-circle {
+    transition: all 0.3s ease;
+}
+
+.rounded-circle:hover {
+    transform: scale(1.1);
+    border-color: #198754 !important;
 }
 </style>
 {% endblock %}

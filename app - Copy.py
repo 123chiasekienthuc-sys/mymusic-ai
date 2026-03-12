@@ -342,6 +342,7 @@ def nhacsi_detail(id):
 @app.route('/nhacsi/add', methods=['GET', 'POST'])
 @csrf.exempt
 def add_nhacsi():
+    """Thêm nhạc sĩ mới"""
     if request.method == 'GET':
         return render_template('nhacsi/nhacsi_add.html')
     
@@ -351,32 +352,19 @@ def add_nhacsi():
             flash('Tên nhạc sĩ không được để trống', 'danger')
             return redirect(url_for('add_nhacsi'))
         
-        # XỬ LÝ AVATAR - ĐÃ SỬA
         avatar_path = None
         if 'avatar' in request.files:
             file = request.files['avatar']
             if file and file.filename:
-                # Kiểm tra định dạng file
                 if not allowed_image(file.filename):
-                    flash('Định dạng ảnh không hợp lệ. Chấp nhận: PNG, JPG, JPEG, GIF', 'danger')
+                    flash('Định dạng ảnh không hợp lệ', 'danger')
                     return redirect(url_for('add_nhacsi'))
                 
-                # Tạo tên file an toàn
-                ext = file.filename.rsplit('.', 1)[1].lower()
-                filename = secure_filename(f"ns_{int(time.time())}.{ext}")
-                
-                # Đường dẫn đầy đủ để lưu
+                filename = secure_filename(f"ns_{int(time.time())}_{file.filename}")
                 save_path = os.path.join(app.config['ARTIST_IMAGE_FOLDER'], filename)
-                
-                # Lưu file
                 file.save(save_path)
-                
-                # Chỉ lưu tên file vào database (không bao gồm đường dẫn)
-                avatar_path = filename
-                
-                logger.info(f"Đã lưu ảnh nhạc sĩ: {filename}")
+                avatar_path = f"images/artists/{filename}"
         
-        # Insert vào database
         query = """
             INSERT INTO nhacsi (tennhacsi, ngaysinh, gioitinh, quequan, tieusu, avatar)
             VALUES (%s, %s, %s, %s, %s, %s)
@@ -387,7 +375,7 @@ def add_nhacsi():
             request.form.get('gioitinh'),
             request.form.get('quequan'),
             request.form.get('tieusu'),
-            avatar_path  # Chỉ lưu tên file
+            avatar_path
         )
         
         _, error = execute_query(query, params)
@@ -547,10 +535,10 @@ def casi_detail(id):
         cursor.close()
         conn.close()
 
-
 @app.route('/casi/add', methods=['GET', 'POST'])
 @csrf.exempt
 def add_casi():
+    """Thêm ca sĩ mới"""
     if request.method == 'GET':
         return render_template('casi/casi_add.html')
     
@@ -560,31 +548,19 @@ def add_casi():
             flash('Tên ca sĩ không được để trống', 'danger')
             return redirect(url_for('add_casi'))
         
-        # XỬ LÝ ẢNH - ĐÃ SỬA
         anhdaidien = None
         if 'anhdaidien' in request.files:
             file = request.files['anhdaidien']
             if file and file.filename:
                 if not allowed_image(file.filename):
-                    flash('Định dạng ảnh không hợp lệ. Chấp nhận: PNG, JPG, JPEG, GIF', 'danger')
+                    flash('Định dạng ảnh không hợp lệ', 'danger')
                     return redirect(url_for('add_casi'))
                 
-                # Tạo tên file an toàn
-                ext = file.filename.rsplit('.', 1)[1].lower()
-                filename = secure_filename(f"cs_{int(time.time())}.{ext}")
-                
-                # Đường dẫn đầy đủ để lưu
+                filename = secure_filename(f"cs_{int(time.time())}_{file.filename}")
                 save_path = os.path.join(app.config['SINGER_IMAGE_FOLDER'], filename)
-                
-                # Lưu file
                 file.save(save_path)
-                
-                # Chỉ lưu tên file vào database
                 anhdaidien = filename
-                
-                logger.info(f"Đã lưu ảnh ca sĩ: {filename}")
         
-        # Insert vào database
         query = """
             INSERT INTO casi (tencasi, Ngaysinh, Sunghiep, anhdaidien)
             VALUES (%s, %s, %s, %s)
@@ -593,7 +569,7 @@ def add_casi():
             tencasi,
             request.form.get('ngaysinh'),
             request.form.get('sunghiep'),
-            anhdaidien  # Chỉ lưu tên file
+            anhdaidien
         )
         
         _, error = execute_query(query, params)
@@ -608,48 +584,6 @@ def add_casi():
         logger.error(f"Error adding casi: {e}")
         flash(f'Lỗi: {str(e)}', 'danger')
         return redirect(url_for('add_casi'))
-
-@app.route('/debug/images')
-def debug_images():
-    """Kiểm tra danh sách ảnh đã upload"""
-    singer_dir = Path(app.config['SINGER_IMAGE_FOLDER'])
-    artist_dir = Path(app.config['ARTIST_IMAGE_FOLDER'])
-    
-    result = {
-        'singers_folder': str(singer_dir),
-        'singers_exists': singer_dir.exists(),
-        'singers_files': [f.name for f in singer_dir.glob('*')] if singer_dir.exists() else [],
-        'artists_folder': str(artist_dir),
-        'artists_exists': artist_dir.exists(),
-        'artists_files': [f.name for f in artist_dir.glob('*')] if artist_dir.exists() else []
-    }
-    
-    return jsonify(result)
-
-# Thêm hàm kiểm tra quyền
-def check_folder_permissions():
-    singer_dir = Path(app.config['SINGER_IMAGE_FOLDER'])
-    artist_dir = Path(app.config['ARTIST_IMAGE_FOLDER'])
-    
-    # Tạo file test
-    test_file = singer_dir / 'test.txt'
-    try:
-        test_file.write_text('test')
-        test_file.unlink()  # Xóa file test
-        logger.info(f"✅ Có quyền ghi trong {singer_dir}")
-    except Exception as e:
-        logger.error(f"❌ Không có quyền ghi trong {singer_dir}: {e}")
-    
-    test_file = artist_dir / 'test.txt'
-    try:
-        test_file.write_text('test')
-        test_file.unlink()
-        logger.info(f"✅ Có quyền ghi trong {artist_dir}")
-    except Exception as e:
-        logger.error(f"❌ Không có quyền ghi trong {artist_dir}: {e}")
-
-# Gọi hàm kiểm tra khi khởi động
-check_folder_permissions()
 
 @app.route('/casi/edit/<int:idcasi>', methods=['GET', 'POST'])
 @csrf.exempt

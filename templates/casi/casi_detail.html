@@ -14,17 +14,30 @@
     <!-- Thông tin ca sĩ -->
     <div class="row mb-4">
         <div class="col-md-4 text-center">
-            <img src="{{ casi.anhdaidien or url_for('static', filename='images/default-avatar.jpg') }}" 
+            <!-- SỬA: Xử lý ảnh đúng cách với onerror -->
+            <img src="{% if casi.anhdaidien %}{{ url_for('static', filename='images/singers/' + casi.anhdaidien) }}{% else %}{{ url_for('static', filename='images/default-avatar.jpg') }}{% endif %}" 
                  class="img-thumbnail rounded-circle mb-3" 
-                 style="width: 200px; height: 200px; object-fit: cover;">
+                 style="width: 200px; height: 200px; object-fit: cover; border: 3px solid #198754;"
+                 alt="{{ casi.tencasi }}"
+                 onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/default-avatar.jpg') }}';">
+            
             <h2>{{ casi.tencasi }}</h2>
             <p class="text-muted">
                 {% if casi.ngaysinh %}
-                Sinh ngày: {{ casi.ngaysinh.strftime('%d/%m/%Y') }}
+                    {% if casi.ngaysinh is string %}
+                        Sinh ngày: {{ casi.ngaysinh }}
+                    {% else %}
+                        Sinh ngày: {{ casi.ngaysinh.strftime('%d/%m/%Y') }}
+                    {% endif %}
                 {% else %}
                 Chưa cập nhật ngày sinh
                 {% endif %}
             </p>
+            
+            <!-- THÊM: Nút chỉnh sửa -->
+            <a href="/casi/edit/{{ casi.idcasi }}" class="btn btn-outline-success btn-sm mt-2">
+                <i class="fas fa-edit me-1"></i>Chỉnh sửa
+            </a>
         </div>
         
         <div class="col-md-8">
@@ -34,9 +47,9 @@
                 </div>
                 <div class="card-body">
                     {% if casi.sunghiep %}
-                    <div class="text-justify">{{ casi.sunghiep }}</div>
+                    <div class="text-justify">{{ casi.sunghiep|replace('\n', '<br>')|safe }}</div>
                     {% else %}
-                    <p class="text-muted">Chưa cập nhật sự nghiệp</p>
+                    <p class="text-muted fst-italic">Chưa cập nhật sự nghiệp</p>
                     {% endif %}
                 </div>
             </div>
@@ -45,19 +58,23 @@
 
     <!-- Danh sách bản thu âm -->
     <div class="card shadow-sm">
-        <div class="card-header bg-success text-white">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
             <h4 class="mb-0">Các bản thu âm</h4>
+            <a href="/banthuam/add?casi={{ casi.idcasi }}" class="btn btn-sm btn-light">
+                <i class="fas fa-plus me-1"></i>Thêm bản thu
+            </a>
         </div>
         <div class="card-body">
             {% if banthuam %}
             <div class="table-responsive">
                 <table class="table table-hover">
-                    <thead>
+                    <thead class="table-light">
                         <tr>
                             <th>STT</th>
                             <th>Tên bài hát</th>
                             <th>Nhạc sĩ</th>
                             <th>Ngày thu âm</th>
+                            <th>Thời lượng</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -65,7 +82,7 @@
                         <tr>
                             <td>{{ loop.index }}</td>
                             <td>
-                                <a href="/bannhac/{{ ban.idbannhac }}" class="text-decoration-none">
+                                <a href="/bannhac/{{ ban.idbannhac }}" class="text-decoration-none fw-bold">
                                     {{ ban.tenbannhac }}
                                 </a>
                             </td>
@@ -74,16 +91,85 @@
                                     {{ ban.tennhacsi }}
                                 </a>
                             </td>
-                            <td>{{ ban.ngay_them }}</td>
+                            <td>{{ ban.ngay_them or 'Chưa rõ' }}</td>
+                            <td>
+                                {% if ban.thoiluong %}
+                                <span class="badge bg-secondary">{{ ban.thoiluong }}</span>
+                                {% else %}
+                                <span class="text-muted">--:--</span>
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            
+            <!-- THÊM: Thống kê nhanh -->
+            <div class="row mt-3">
+                <div class="col-md-4">
+                    <div class="alert alert-success py-2 mb-0">
+                        <small><i class="fas fa-music me-1"></i> Tổng số: <strong>{{ banthuam|length }}</strong> bản thu</small>
+                    </div>
+                </div>
+            </div>
+            
             {% else %}
-            <p class="text-muted">Chưa có bản thu âm nào</p>
+            <div class="text-center py-5">
+                <i class="fas fa-headphones fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">Chưa có bản thu âm nào</h5>
+                <p class="text-muted mb-3">Hãy thêm bản thu âm đầu tiên cho ca sĩ này</p>
+                <a href="/banthuam/add?casi={{ casi.idcasi }}" class="btn btn-success">
+                    <i class="fas fa-plus me-1"></i>Thêm bản thu âm
+                </a>
+            </div>
             {% endif %}
         </div>
     </div>
 </div>
+
+<style>
+/* Custom CSS */
+.img-thumbnail {
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.img-thumbnail:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(25, 135, 84, 0.05);
+}
+
+.card-header {
+    border-bottom: none;
+    padding: 1rem 1.5rem;
+}
+
+.text-justify {
+    text-align: justify;
+    line-height: 1.8;
+    font-size: 1.05rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .img-thumbnail {
+        width: 150px !important;
+        height: 150px !important;
+    }
+    
+    .text-justify {
+        font-size: 1rem;
+        line-height: 1.6;
+    }
+    
+    .table-responsive {
+        font-size: 0.9rem;
+    }
+}
+</style>
 {% endblock %}
