@@ -181,16 +181,29 @@ def rate_limit(max_requests=60, time_window=60):
     return decorator
 
 # =============================
-# GOOGLE AI (tùy chọn)
+# GOOGLE AI (SỬA LẠI CHO TƯƠNG THÍCH)
 # =============================
 try:
+    # Thử import theo cách mới (google.genai)
     from google import genai
     from google.genai import types
     gemini_client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
-    logger.info("Gemini AI initialized")
-except ImportError:
-    logger.warning("Google AI library not installed")
-    gemini_client = None
+    logger.info("✅ Đã khởi tạo Gemini AI (phiên bản mới)")
+    GEMINI_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    try:
+        # Nếu lỗi, thử import theo cách cũ (google.generativeai)
+        import google.generativeai as genai
+        genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+        # Sử dụng model cũ hơn nếu cần
+        gemini_client = genai.GenerativeModel('gemini-1.5-flash')
+        logger.info("✅ Đã khởi tạo Gemini AI (phiên bản cũ)")
+        GEMINI_AVAILABLE = True
+    except ImportError:
+        logger.warning("⚠️ Không thể khởi tạo Google AI. Tiếp tục chạy ở chế độ offline.")
+        gemini_client = None
+        GEMINI_AVAILABLE = False
+
 
 # =============================
 # AI ASSISTANT (fallback)
